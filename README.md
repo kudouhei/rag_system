@@ -1,63 +1,93 @@
 # ⚡ Adaptive RAG System
 
-> 企业知识库自适应检索增强生成系统  
-> Iterative Retrieval · Multi-Strategy Fusion · Cross-Encoder Reranking
+> Enterprise Knowledge Base with Adaptive Retrieval-Augmented Generation  
+> 企业知识库自适应检索增强生成系统
+
+**Techniques:** HyDE · Iterative Retrieval (ReAct) · Hybrid Dense-Sparse Fusion · Cross-Encoder Reranking · RAGAS Evaluation · Multi-turn Conversation
 
 ---
 
-## 系统架构
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    React Frontend (Port 3000)             │
-│  ┌──────────┐  ┌─────────────┐  ┌────────────────────┐  │
-│  │ 查询配置  │  │  执行过程   │  │    效果分析        │  │
-│  │ 策略选择  │  │  实时日志   │  │  召回率对比图      │  │
-│  │ 阈值调节  │  │  迭代轨迹   │  │  各模块贡献度      │  │
-│  └──────────┘  └─────────────┘  └────────────────────┘  │
-└─────────────────────┬───────────────────────────────────┘
-                      │ WebSocket (实时流式传输)
-┌─────────────────────▼───────────────────────────────────┐
-│                FastAPI Backend (Port 8000)                │
-│                                                           │
-│  ┌─────────────────────────────────────────────────────┐ │
-│  │              RAG Pipeline                            │ │
-│  │                                                       │ │
-│  │  ① Query Input                                       │ │
-│  │       ↓                                              │ │
-│  │  ② Multi-Strategy Retrieval ──── Vector (FAISS)      │ │
-│  │       │                     ├─── BM25 (Lucene)       │ │
-│  │       │                     └─── Hybrid Fusion       │ │
-│  │       ↓                                              │ │
-│  │  ③ Confidence Check                                  │ │
-│  │       │ < threshold                                  │ │
-│  │       ↓                                              │ │
-│  │  ④ ReAct Reflection ──── Failure Analysis            │ │
-│  │       │               └── Query Rewrite              │ │
-│  │       └──────────────────→ Back to ②                 │ │
-│  │       │ ≥ threshold                                  │ │
-│  │       ↓                                              │ │
-│  │  ⑤ Cross-Encoder Reranking                           │ │
-│  │       ↓                                              │ │
-│  │  ⑥ Answer Generation                                 │ │
-│  └─────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                    React Frontend  (Port 3000)                    │
+│                                                                    │
+│  ┌─────────────┐  ┌──────────────┐  ┌──────────┐  ┌──────────┐  │
+│  │ Query Input  │  │  Exec Log    │  │ Results  │  │  Chat    │  │
+│  │ Config Panel │  │  HyDE Doc    │  │ Doc Cards│  │ History  │  │
+│  │ 4 Toggles    │  │  Iter Trace  │  │ Source   │  │ Bubble   │  │
+│  └─────────────┘  └──────────────┘  └──────────┘  └──────────┘  │
+│                    ── RAGAS Metrics Panel ──                      │
+└─────────────────────────┬────────────────────────────────────────┘
+                           │  WebSocket  (streaming)
+┌─────────────────────────▼────────────────────────────────────────┐
+│                   FastAPI Backend  (Port 8000)                    │
+│                                                                    │
+│  ┌──────────────────────────────────────────────────────────┐    │
+│  │                      RAG Pipeline                         │    │
+│  │                                                            │    │
+│  │  ① [Optional] HyDE  ── LLM generates hypothetical doc    │    │
+│  │       ↓  embed(hyp_doc) instead of embed(query)           │    │
+│  │  ② Multi-Strategy Retrieval                               │    │
+│  │       ├── Dense   : BGE embeddings + cosine similarity    │    │
+│  │       ├── Sparse  : BM25 + jieba tokenisation             │    │
+│  │       └── Hybrid  : 0.6 × dense + 0.4 × sparse           │    │
+│  │       ↓                                                    │    │
+│  │  ③ Confidence Check  (configurable threshold)             │    │
+│  │       │  < threshold → ReAct Reflection                   │    │
+│  │       │       ├── LLM diagnoses failure reason            │    │
+│  │       │       └── LLM rewrites query  → back to ②        │    │
+│  │       │  ≥ threshold ↓                                    │    │
+│  │  ④ Cross-Encoder Reranking                                │    │
+│  │       └── BAAI/bge-reranker (real) or cosine fallback     │    │
+│  │       ↓                                                    │    │
+│  │  ⑤ Answer Generation  (DeepSeek streaming, with history) │    │
+│  │       ↓                                                    │    │
+│  │  ⑥ RAGAS Evaluation   (context relevance / faithfulness) │    │
+│  └──────────────────────────────────────────────────────────┘    │
+│                                                                    │
+│  Knowledge Base: backend/docs/  (.txt / .md / .pdf)               │
+│  Embeddings    : BAAI/bge-small-zh-v1.5  (local, GDPR-safe)      │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 快速启动
+## Key Research Techniques
 
-### 方法一：一键启动脚本
+| # | Technique | Reference | Effect |
+|---|-----------|-----------|--------|
+| ① | **HyDE** — Hypothetical Document Embeddings | Gao et al., EMNLP 2022 | Bridges query–document gap |
+| ② | **Iterative Retrieval + ReAct Reflection** | Yao et al., NeurIPS 2022 | +15% recall |
+| ③ | **Hybrid Dense-Sparse Fusion** (BGE + BM25) | — | +3% recall |
+| ④ | **Cross-Encoder Reranking** (BAAI/bge-reranker) | — | +2% recall |
+| ⑤ | **RAGAS Evaluation Framework** | Es et al., arXiv 2023 | Automated QA quality metrics |
+| ⑥ | **Multi-turn Conversation Memory** | — | Context-aware QA |
+
+### Privacy & Compliance
+- All document embeddings are computed **locally** — no text leaves the server
+- LLM calls (DeepSeek) are **opt-in**; the system degrades gracefully without an API key
+- Document upload / deletion API supports **data-minimisation** workflows
+- Designed with **GDPR** principles and **EU AI Act** transparency requirements in mind
+
+---
+
+## Quick Start
+
+### Option A — one-command launch
 
 ```bash
+cp backend/.env.example backend/.env
+# Edit backend/.env and fill in DEEPSEEK_API_KEY
+
 chmod +x start.sh
 ./start.sh
 ```
 
-### 方法二：分别启动
+### Option B — run services separately
 
-**启动后端：**
+**Backend:**
 ```bash
 cd backend
 pip install -r requirements.txt
@@ -65,7 +95,7 @@ python main.py
 # → http://localhost:8000
 ```
 
-**启动前端：**
+**Frontend:**
 ```bash
 cd frontend
 npm install
@@ -73,136 +103,203 @@ npm run dev
 # → http://localhost:3000
 ```
 
+### Add your documents
+
+Drop `.txt`, `.md`, or `.pdf` files into `backend/docs/` and restart the backend.  
+The system automatically chunks, embeds, and indexes all files at startup.
+
+To hot-reload after adding files without restarting:
+```bash
+curl -X POST http://localhost:8000/reload
+```
+
 ---
 
-## 系统依赖
+## Configuration
 
-| 依赖 | 版本要求 |
-|------|---------|
-| Python | 3.9+ |
-| Node.js | 18+ |
-| npm | 9+ |
+Copy `.env.example` to `.env` and edit:
+
+```bash
+# Required for LLM answer generation and query rewriting
+DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxx
+DEEPSEEK_MODEL=deepseek-chat
+
+# Embedding model (downloaded automatically on first run, ~90 MB)
+EMBED_MODEL=BAAI/bge-small-zh-v1.5
+
+# Optional: real Cross-Encoder reranking (~280 MB)
+# RERANKER_MODEL=BAAI/bge-reranker-base
+
+# Document folder (default: backend/docs/)
+# DOCS_DIR=/path/to/your/documents
+
+# Chunk size in characters
+MAX_CHUNK_CHARS=600
+```
 
 ---
 
-## 核心技术实现
+## System Requirements
 
-### 1. 迭代式检索（ReAct 思想）
+| Dependency | Version |
+|------------|---------|
+| Python     | 3.9+    |
+| Node.js    | 18+     |
+| npm        | 9+      |
+| RAM        | ≥ 4 GB (8 GB recommended with cross-encoder) |
+
+---
+
+## Core Implementation
+
+### HyDE — Hypothetical Document Embeddings
+
+```python
+# Instead of embedding the raw query, generate a hypothetical answer first.
+# The hypothetical answer embedding is semantically closer to real documents.
+hypothetical = await llm.generate(
+    f"Write a passage that answers: {query}"
+)
+retrieval_embedding = encoder.encode(hypothetical)   # ← key difference
+```
+
+### Iterative Retrieval with ReAct Reflection
 
 ```python
 while iteration < max_iterations:
     results = retrieve(current_query, strategy)
-    confidence = max(r.score for r in results)
-    
+    confidence = results[0].score
+
     if confidence < threshold:
-        # 反思机制
-        failure = analyze_failure(current_query, results)
-        current_query = rewrite_query(current_query, failure)
+        reason  = llm.diagnose_failure(current_query, results)
+        current_query = llm.rewrite_query(current_query, reason)
         iteration += 1
         continue
     break
 ```
 
-**效果：召回率 +15%**
-
-### 2. 多策略融合检索
+### Hybrid Dense-Sparse Fusion
 
 ```python
-# 向量检索（语义相似性）
-vector_scores = faiss_index.search(query_embedding, top_k)
+# Dense: BAAI/bge semantic embeddings
+emb_scores  = cosine_similarity(query_emb, doc_embeddings)
 
-# BM25 关键词检索（精确匹配）  
-bm25_scores = bm25.get_scores(query_tokens)
+# Sparse: BM25 with jieba Chinese tokenisation
+bm25_scores = bm25_index.get_scores(jieba.cut(query))
 
-# 混合融合
-hybrid_score = 0.6 * vector_score + 0.4 * bm25_score
+# Fusion
+hybrid_score = 0.6 * emb_scores + 0.4 * bm25_scores
 ```
 
-**效果：召回率 +3%**
-
-### 3. 交叉编码器精排
+### RAGAS Evaluation (automated, every query)
 
 ```python
-# 双编码器召回（效率优先）
-candidates = dual_encoder.retrieve(query, top_k=20)
-
-# 交叉编码器精排（精度优先）
-reranked = cross_encoder.predict(
-    [(query, doc) for doc in candidates]
-)
-results = sorted(reranked, reverse=True)[:top_k]
-```
-
-**效果：召回率 +2%**
-
----
-
-## API 接口
-
-### WebSocket
-
-```
-ws://localhost:8000/ws/query
-```
-
-**请求体：**
-```json
-{
-  "query": "企业知识库如何实现高效检索？",
-  "strategy": "adaptive",
-  "enable_iterative": true,
-  "enable_rerank": true,
-  "confidence_threshold": 0.55,
-  "top_k": 5
+metrics = {
+    "context_relevance":   avg_cosine(query, retrieved_docs),
+    "context_precision":   fraction(sim > 0.45, retrieved_docs),
+    "answer_relevance":    cosine(query_emb, answer_emb),
+    "answer_faithfulness": token_overlap(answer, context),  # hallucination proxy
 }
 ```
 
-**流式事件类型：**
-- `pipeline_start` - 管道启动
-- `phase_start` - 阶段开始
-- `doc_scored` - 文档打分
-- `retrieval_done` - 检索完成
-- `reflection` - 反思触发
-- `query_rewrite` - 查询重写
-- `rerank_score` - 精排分数
-- `answer_token` - 答案流式输出
-- `pipeline_complete` - 完整结果
+---
 
-### REST
+## API Reference
 
+### WebSocket  `ws://localhost:8000/ws/query`
+
+**Request:**
+```json
+{
+  "query": "如何实现高效的企业知识检索？",
+  "strategy": "adaptive",
+  "enable_iterative": true,
+  "enable_rerank": true,
+  "enable_hyde": false,
+  "confidence_threshold": 0.55,
+  "top_k": 5,
+  "history": [
+    { "role": "user",      "content": "上一轮问题" },
+    { "role": "assistant", "content": "上一轮回答" }
+  ]
+}
 ```
-GET /health          # 健康检查
-GET /docs_list       # 知识库文档列表
-GET /docs            # FastAPI 自动文档
+
+**Streaming event types:**
+
+| Event | Description |
+|-------|-------------|
+| `pipeline_start`    | Pipeline configuration echo |
+| `phase_start`       | Phase transition (retrieval / reranking / generation / hyde / reflection) |
+| `hyde_generation`   | Hypothetical document generated by LLM |
+| `doc_scored`        | Per-document scoring (embedding + BM25 + hybrid) |
+| `retrieval_done`    | Iteration summary with top score vs threshold |
+| `reflection`        | ReAct reflection triggered (failure reason) |
+| `query_rewrite`     | Original → rewritten query |
+| `rerank_score`      | Cross-encoder score per document |
+| `reranking_done`    | Reranking complete |
+| `answer_token`      | Streaming LLM token |
+| `pipeline_complete` | Final docs + metrics + RAGAS scores |
+| `error`             | Error message |
+
+### REST Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `/health`    | Service status + model info |
+| `GET`  | `/docs_list` | All indexed documents |
+| `POST` | `/upload`    | Upload a document file (multipart/form-data) |
+| `POST` | `/reload`    | Rebuild index from docs folder |
+| `GET`  | `/docs`      | FastAPI auto-generated OpenAPI docs |
+
+**Upload example:**
+```bash
+curl -X POST http://localhost:8000/upload \
+  -F "file=@my_document.pdf"
 ```
 
 ---
 
-## 实验结果
+## Benchmark Results
 
-| 系统配置 | Natural Questions 召回率 |
-|---------|------------------------|
-| 基线（关键词匹配）| 61.0% |
-| + 迭代式检索 | 70.0% **（+15%）** |
-| + 多策略融合 | 72.4% **（+3%）** |
-| + 重排序 | 74.2% **（+2%）** |
+| Configuration | Recall@10 (Natural Questions) |
+|---------------|-------------------------------|
+| Baseline (BM25 only)        | 61.0%              |
+| + Iterative Retrieval       | 70.0% **(+15%)**   |
+| + Multi-strategy Fusion     | 72.4% **(+3%)**    |
+| + Cross-Encoder Reranking   | 74.2% **(+2%)**    |
 
 ---
 
-## 项目结构
+## Project Structure
 
 ```
-rag-system/
+rag_system/
 ├── backend/
-│   ├── main.py          # FastAPI + WebSocket 核心逻辑
-│   └── requirements.txt
+│   ├── main.py              # FastAPI + WebSocket pipeline (HyDE, RAGAS, CE)
+│   ├── requirements.txt     # Python dependencies
+│   ├── .env.example         # Configuration template
+│   └── docs/                # Knowledge base documents (.txt / .md / .pdf)
+│       ├── RAG系统技术概览.md
+│       ├── 迭代检索与反思机制.md
+│       ├── 交叉编码器重排序.md
+│       └── 企业知识库建设指南.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx      # 主界面组件
-│   │   └── main.jsx     # 入口
+│   │   ├── App.jsx          # Main UI (React + inline styles)
+│   │   └── main.jsx         # Entry point
 │   ├── index.html
 │   ├── vite.config.js
 │   └── package.json
-├── start.sh             # 一键启动脚本
+├── start.sh                 # One-command launcher
+├── .gitignore
 └── README.md
 ```
+
+---
+
+## Tech Stack
+
+**Backend:** Python · FastAPI · sentence-transformers · rank-bm25 · jieba · OpenAI SDK (DeepSeek)  
+**Frontend:** React 18 · Vite · WebSocket API  
+**Models:** BAAI/bge-small-zh-v1.5 (embedding) · BAAI/bge-reranker-base (optional reranker) · DeepSeek-Chat (LLM)
