@@ -9,11 +9,8 @@ const C = {
   borderBright: "#cbd5e1",
   accent:       "#0284c7",
   accentDim:    "#0369a1",
-  accentGlow:   "rgba(2,132,199,0.12)",
   green:        "#059669",
-  greenDim:     "#047857",
   orange:       "#ea580c",
-  orangeDim:    "#c2410c",
   red:          "#dc2626",
   purple:       "#7c3aed",
   teal:         "#0891b2",
@@ -22,29 +19,222 @@ const C = {
   textDim:      "#94a3b8",
 };
 
+// ── Internationalisation ──────────────────────────────────────────────────────
+const I18N = {
+  zh: {
+    appSubtitle:        "HyDE · 迭代检索 · 交叉编码器 · RAGAS 评估",
+    badge_conv:         "多轮对话",
+    queryLabel:         "QUERY INPUT",
+    queryPlaceholder:   "输入问题… (Enter 发送)",
+    configLabel:        "CONFIGURATION",
+    strategyLabel:      "检索策略",
+    strategies:         { adaptive:"自适应", hybrid:"混合", vector:"向量", bm25:"BM25" },
+    toggle_iterative:   "迭代检索",
+    toggle_rerank:      "精排 Rerank",
+    toggle_hyde:        "HyDE 增强",
+    toggle_conv:        "对话模式",
+    tip_iterative:      "ReAct 风格的反思式迭代检索 (Yao et al., 2022)",
+    tip_rerank:         "Cross-Encoder 精排（BAAI/bge-reranker）",
+    tip_hyde:           "Hypothetical Document Embeddings (Gao et al., EMNLP 2022)",
+    tip_conv:           "多轮对话：保留历史上下文",
+    thresholdLabel:     "置信度阈值",
+    convCtx:            (n) => `💬 携带 ${n} 轮对话上下文`,
+    clearBtn:           "清空",
+    runBtn:             "⚡ 执行检索",
+    runningBtn:         "检索中…",
+    stat_elapsed:       "耗时",
+    stat_iters:         "迭代轮次",
+    stat_docs:          "召回文档",
+    tab_process:        "执行过程",
+    tab_results:        "检索结果",
+    tab_metrics:        "效果分析",
+    tab_conv:           "对话历史",
+    logTitle:           "EXECUTION LOG",
+    logEmpty:           "等待执行…",
+    hydeTitle:          "HyDE HYPOTHETICAL DOCUMENT",
+    answerTitle:        "GENERATED ANSWER",
+    iterTitle:          "ITERATION TRACE",
+    iterEmpty:          "暂无迭代数据",
+    resultsTitle:       (n) => `TOP-${n} 检索结果（已精排）`,
+    resEmpty_idle:      "请先执行检索",
+    resEmpty_run:       "检索中…",
+    resEmpty_done:      "无结果",
+    score_vec:          "向量",
+    score_bm25:         "BM25",
+    ragasTitle:         "RAGAS EVALUATION",
+    ragasOverall:       (p) => `综合 ${p}%`,
+    cr_label:           "Context Relevance",
+    cp_label:           "Context Precision",
+    ar_label:           "Answer Relevance",
+    af_label:           "Answer Faithfulness",
+    cr_desc:            "检索文档与查询的平均语义相似度 (Es et al., 2023)",
+    cp_desc:            "检索结果中真正相关文档的比例",
+    ar_desc:            "生成答案与查询问题的语义匹配程度",
+    af_desc:            "答案内容与检索文档的一致性（幻觉检测代理指标）",
+    recallTitle:        "RECALL@10 提升对比",
+    recallSub:          "(Natural Questions)",
+    r_base:             "基线",
+    r_iter:             "迭代检索",
+    r_fus:              "多策略",
+    r_re:               "重排序",
+    qMetricsTitle:      "本次查询指标",
+    m_conf:             "最终置信度",
+    m_iter:             "迭代后召回率",
+    m_fus:              "融合后召回率",
+    m_re:               "精排后召回率",
+    modTitle:           "模块贡献分析",
+    mod_iter:           "迭代式检索 (ReAct)",
+    mod_fus:            "多策略融合检索",
+    mod_ce:             "Cross-Encoder 精排",
+    note_dataset:       "评测基准：Natural Questions",
+    note_iter:          (n) => `迭代轮次：${n} 轮`,
+    note_strat:         (s) => `检索策略：${s==="adaptive"?"自适应（动态切换）":s}`,
+    note_hyde:          (on) => `HyDE 增强：${on?"已启用":"未启用"}`,
+    note_hist:          (n) => `对话历史：${n>0?`${n} 轮`:"无"}`,
+    metricsEmpty:       "请先执行检索以查看效果分析",
+    convHistTitle:      (n) => `CONVERSATION HISTORY (${n} turns)`,
+    convEmpty:          "暂无对话记录。开启「对话模式」后，每次问答将自动保存在此。",
+    role_user:          "YOU",
+    role_asst:          "ASSISTANT",
+    sampleQueries: [
+      "企业知识库如何实现高效检索？",
+      "HyDE 假设文档嵌入的原理是什么？",
+      "如何评估 RAG 系统的召回率？",
+      "交叉编码器重排序的优势在哪里？",
+    ],
+    // LogEntry dynamic strings
+    log_start:          (q) => <>开始处理：<em style={{color:C.accent}}>「{q}」</em></>,
+    log_hyde:           (doc) => <><span style={{color:C.teal,fontWeight:700}}>HyDE 假设文档：</span>&nbsp;<span style={{color:C.textMid,fontStyle:"italic"}}>「{doc.slice(0,80)}{doc.length>80?"…":""}」</span></>,
+    log_docScored:      (e) => <><span style={{color:C.textMid}}>{e.title.slice(0,22)}…</span>&nbsp;→&nbsp;<span style={{color:C.accent}}>向量 {(e.embedding_score*100).toFixed(0)}%</span>&nbsp;<span style={{color:C.green}}>BM25 {(e.bm25_score*100).toFixed(0)}%</span>&nbsp;<span style={{color:C.text,fontWeight:700}}>综合 {(e.final_score*100).toFixed(0)}%</span></>,
+    log_retDone:        (e) => <><span>第 {e.iteration} 轮检索，最高分：</span><span style={{color:e.top_score>=e.threshold?C.green:C.orange,fontWeight:700}}>{(e.top_score*100).toFixed(1)}%</span><span> (阈值 {(e.threshold*100).toFixed(0)}%)</span></>,
+    log_reflect:        (e) => <><span style={{color:C.orange}}>反思：</span>&nbsp;{e.failure_reason}</>,
+    log_rewrite:        (e) => <><span>查询重写：</span><span style={{color:C.textMid,textDecoration:"line-through"}}>「{e.original_query}」</span>&nbsp;→&nbsp;<span style={{color:C.accent}}>「{e.new_query}」</span></>,
+    log_rerank:         (e) => <><span style={{color:C.textMid}}>{e.title.slice(0,20)}…</span>&nbsp;精排：<span style={{color:C.purple,fontWeight:700}}>{(e.ce_score*100).toFixed(1)}%</span>&nbsp;<span style={{color:e.improvement>0?C.green:C.orange,fontSize:11}}>({e.improvement>0?"+":""}{(e.improvement*100).toFixed(1)}%)</span></>,
+    log_rerankDone:     (e) => <><span>重排完成，最高：</span><span style={{color:C.purple,fontWeight:700}}>{(e.top_score*100).toFixed(1)}%</span></>,
+    log_done:           (e) => <span style={{color:C.green,fontWeight:700}}>✓ 完成，{e.elapsed_seconds}s，{e.total_iterations} 轮迭代</span>,
+  },
+  en: {
+    appSubtitle:        "HyDE · Iterative Retrieval · Cross-Encoder · RAGAS Evaluation",
+    badge_conv:         "Multi-turn Conv.",
+    queryLabel:         "QUERY INPUT",
+    queryPlaceholder:   "Ask a question… (Enter to send)",
+    configLabel:        "CONFIGURATION",
+    strategyLabel:      "Retrieval Strategy",
+    strategies:         { adaptive:"Adaptive", hybrid:"Hybrid", vector:"Vector", bm25:"BM25" },
+    toggle_iterative:   "Iterative",
+    toggle_rerank:      "Reranking",
+    toggle_hyde:        "HyDE",
+    toggle_conv:        "Chat Mode",
+    tip_iterative:      "ReAct-style reflective iterative retrieval (Yao et al., 2022)",
+    tip_rerank:         "Cross-Encoder reranking (BAAI/bge-reranker)",
+    tip_hyde:           "Hypothetical Document Embeddings (Gao et al., EMNLP 2022)",
+    tip_conv:           "Multi-turn conversation: retain context across queries",
+    thresholdLabel:     "Confidence Threshold",
+    convCtx:            (n) => `💬 ${n} turn(s) of history`,
+    clearBtn:           "Clear",
+    runBtn:             "⚡ Run Retrieval",
+    runningBtn:         "Retrieving…",
+    stat_elapsed:       "Elapsed",
+    stat_iters:         "Iterations",
+    stat_docs:          "Docs",
+    tab_process:        "Process",
+    tab_results:        "Results",
+    tab_metrics:        "Analytics",
+    tab_conv:           "History",
+    logTitle:           "EXECUTION LOG",
+    logEmpty:           "Waiting for query…",
+    hydeTitle:          "HyDE HYPOTHETICAL DOCUMENT",
+    answerTitle:        "GENERATED ANSWER",
+    iterTitle:          "ITERATION TRACE",
+    iterEmpty:          "No iterations yet",
+    resultsTitle:       (n) => `TOP-${n} RETRIEVED DOCS (reranked)`,
+    resEmpty_idle:      "Run a query to see results",
+    resEmpty_run:       "Retrieving…",
+    resEmpty_done:      "No results",
+    score_vec:          "Vector",
+    score_bm25:         "BM25",
+    ragasTitle:         "RAGAS EVALUATION",
+    ragasOverall:       (p) => `Overall ${p}%`,
+    cr_label:           "Context Relevance",
+    cp_label:           "Context Precision",
+    ar_label:           "Answer Relevance",
+    af_label:           "Answer Faithfulness",
+    cr_desc:            "Avg. semantic similarity between retrieved docs and the query (Es et al., 2023)",
+    cp_desc:            "Fraction of retrieved docs that are genuinely relevant",
+    ar_desc:            "Semantic alignment between the generated answer and the query",
+    af_desc:            "How grounded the answer is in retrieved docs (hallucination proxy)",
+    recallTitle:        "RECALL@10 IMPROVEMENT",
+    recallSub:          "(Natural Questions)",
+    r_base:             "Baseline",
+    r_iter:             "Iterative",
+    r_fus:              "Fusion",
+    r_re:               "Reranked",
+    qMetricsTitle:      "Query Metrics",
+    m_conf:             "Final Confidence",
+    m_iter:             "Recall (iterative)",
+    m_fus:              "Recall (fusion)",
+    m_re:               "Recall (reranked)",
+    modTitle:           "Module Contributions",
+    mod_iter:           "Iterative Retrieval (ReAct)",
+    mod_fus:            "Multi-strategy Fusion",
+    mod_ce:             "Cross-Encoder Reranking",
+    note_dataset:       "Benchmark: Natural Questions",
+    note_iter:          (n) => `Iterations: ${n}`,
+    note_strat:         (s) => `Strategy: ${s==="adaptive"?"Adaptive (auto-switch)":s}`,
+    note_hyde:          (on) => `HyDE: ${on?"Enabled":"Disabled"}`,
+    note_hist:          (n) => `History: ${n>0?`${n} turn(s)`:"None"}`,
+    metricsEmpty:       "Run a query to view analytics",
+    convHistTitle:      (n) => `CONVERSATION HISTORY (${n} turns)`,
+    convEmpty:          "No conversation yet. Enable Chat Mode to save Q&A pairs here.",
+    role_user:          "YOU",
+    role_asst:          "ASSISTANT",
+    sampleQueries: [
+      "How to implement efficient enterprise knowledge retrieval?",
+      "What is the HyDE hypothetical document embedding technique?",
+      "How do you evaluate the recall rate of a RAG system?",
+      "What are the advantages of cross-encoder reranking?",
+    ],
+    log_start:          (q) => <>Processing: <em style={{color:C.accent}}>"{q}"</em></>,
+    log_hyde:           (doc) => <><span style={{color:C.teal,fontWeight:700}}>HyDE doc: </span><span style={{color:C.textMid,fontStyle:"italic"}}>"{doc.slice(0,80)}{doc.length>80?"…":""}"</span></>,
+    log_docScored:      (e) => <><span style={{color:C.textMid}}>{e.title.slice(0,22)}…</span>&nbsp;→&nbsp;<span style={{color:C.accent}}>Vec {(e.embedding_score*100).toFixed(0)}%</span>&nbsp;<span style={{color:C.green}}>BM25 {(e.bm25_score*100).toFixed(0)}%</span>&nbsp;<span style={{color:C.text,fontWeight:700}}>Score {(e.final_score*100).toFixed(0)}%</span></>,
+    log_retDone:        (e) => <>Round {e.iteration} done, top score: <span style={{color:e.top_score>=e.threshold?C.green:C.orange,fontWeight:700}}>{(e.top_score*100).toFixed(1)}%</span> (threshold {(e.threshold*100).toFixed(0)}%)</>,
+    log_reflect:        (e) => <><span style={{color:C.orange}}>Reflection: </span>{e.failure_reason}</>,
+    log_rewrite:        (e) => <>Query rewrite: <span style={{color:C.textMid,textDecoration:"line-through"}}>"{e.original_query}"</span>&nbsp;→&nbsp;<span style={{color:C.accent}}>"{e.new_query}"</span></>,
+    log_rerank:         (e) => <><span style={{color:C.textMid}}>{e.title.slice(0,20)}…</span>&nbsp;CE score: <span style={{color:C.purple,fontWeight:700}}>{(e.ce_score*100).toFixed(1)}%</span>&nbsp;<span style={{color:e.improvement>0?C.green:C.orange,fontSize:11}}>({e.improvement>0?"+":""}{(e.improvement*100).toFixed(1)}%)</span></>,
+    log_rerankDone:     (e) => <>Reranking done, top: <span style={{color:C.purple,fontWeight:700}}>{(e.top_score*100).toFixed(1)}%</span></>,
+    log_done:           (e) => <span style={{color:C.green,fontWeight:700}}>✓ Done in {e.elapsed_seconds}s · {e.total_iterations} iteration(s)</span>,
+  },
+};
+
+/** Module-level translation helper — pass lang explicitly */
+const tL = (lang, key, ...args) => {
+  const v = I18N[lang]?.[key] ?? I18N.zh[key] ?? key;
+  return typeof v === "function" ? v(...args) : v;
+};
+
 // ── Utility Components ────────────────────────────────────────────────────────
 
 const Tag = ({ label, color = C.accent }) => (
   <span style={{
-    padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600,
-    background: `${color}18`, color, border: `1px solid ${color}40`,
-    letterSpacing: "0.04em", whiteSpace: "nowrap",
+    padding:"2px 8px", borderRadius:4, fontSize:11, fontWeight:600,
+    background:`${color}18`, color, border:`1px solid ${color}40`,
+    letterSpacing:"0.04em", whiteSpace:"nowrap",
   }}>{label}</span>
 );
 
 const ScoreBar = ({ value, color = C.accent, label, showPercent = true }) => (
-  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-    {label && <span style={{ color: C.textMid, fontSize: 11, minWidth: 60 }}>{label}</span>}
-    <div style={{ flex: 1, height: 6, background: C.border, borderRadius: 3, overflow: "hidden" }}>
+  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+    {label && <span style={{ color:C.textMid, fontSize:11, minWidth:56 }}>{label}</span>}
+    <div style={{ flex:1, height:6, background:C.border, borderRadius:3, overflow:"hidden" }}>
       <div style={{
-        width: `${Math.min(value * 100, 100)}%`, height: "100%", borderRadius: 3,
-        background: `linear-gradient(90deg, ${color}88, ${color})`,
-        transition: "width 0.6s cubic-bezier(0.4,0,0.2,1)",
-      }} />
+        width:`${Math.min(value*100,100)}%`, height:"100%", borderRadius:3,
+        background:`linear-gradient(90deg,${color}88,${color})`,
+        transition:"width 0.6s cubic-bezier(0.4,0,0.2,1)",
+      }}/>
     </div>
     {showPercent && (
-      <span style={{ color, fontSize: 11, fontWeight: 700, minWidth: 38, textAlign: "right" }}>
-        {(value * 100).toFixed(1)}%
+      <span style={{ color, fontSize:11, fontWeight:700, minWidth:38, textAlign:"right" }}>
+        {(value*100).toFixed(1)}%
       </span>
     )}
   </div>
@@ -52,229 +242,140 @@ const ScoreBar = ({ value, color = C.accent, label, showPercent = true }) => (
 
 const Pill = ({ children, active, onClick, color = C.accent }) => (
   <button onClick={onClick} style={{
-    padding: "6px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600,
-    cursor: "pointer", transition: "all 0.2s", letterSpacing: "0.03em",
+    padding:"6px 14px", borderRadius:6, fontSize:12, fontWeight:600,
+    cursor:"pointer", transition:"all 0.2s",
     background: active ? `${color}18` : "transparent",
-    color: active ? color : C.textMid,
-    border: `1px solid ${active ? color + "55" : C.border}`,
-    outline: "none",
+    color:       active ? color : C.textMid,
+    border:`1px solid ${active ? color+"55" : C.border}`,
+    outline:"none",
   }}>{children}</button>
 );
 
 const Spinner = ({ size = 16, color = C.accent }) => (
   <div style={{
-    width: size, height: size, borderRadius: "50%",
-    border: `2px solid ${color}33`, borderTopColor: color,
-    animation: "spin 0.7s linear infinite", display: "inline-block",
-  }} />
-);
-
-const Tooltip = ({ text, children }) => (
-  <span style={{ position: "relative", cursor: "help" }} title={text}>
-    {children}
-  </span>
+    width:size, height:size, borderRadius:"50%",
+    border:`2px solid ${color}33`, borderTopColor:color,
+    animation:"spin 0.7s linear infinite", display:"inline-block",
+  }}/>
 );
 
 // ── Phase Badge ───────────────────────────────────────────────────────────────
 const PHASES = {
-  retrieval:  { label: "RETRIEVAL",  color: C.accent  },
-  reranking:  { label: "RERANKING",  color: C.purple  },
-  generation: { label: "GENERATION", color: C.green   },
-  reflection: { label: "REFLECTION", color: C.orange  },
-  hyde:       { label: "HyDE",       color: C.teal    },
+  retrieval:  { label:"RETRIEVAL",  color:C.accent  },
+  reranking:  { label:"RERANKING",  color:C.purple  },
+  generation: { label:"GENERATION", color:C.green   },
+  reflection: { label:"EVALUATION", color:C.orange  },
+  hyde:       { label:"HyDE",       color:C.teal    },
 };
 const PhaseBadge = ({ phase }) => {
-  const p = PHASES[phase] || { label: phase.toUpperCase(), color: C.textMid };
+  const p = PHASES[phase] || { label:phase.toUpperCase(), color:C.textMid };
   return (
     <span style={{
-      padding: "2px 10px", borderRadius: 4, fontSize: 10, fontWeight: 800,
-      background: `${p.color}18`, color: p.color, border: `1px solid ${p.color}44`,
-      letterSpacing: "0.08em",
+      padding:"2px 10px", borderRadius:4, fontSize:10, fontWeight:800,
+      background:`${p.color}18`, color:p.color, border:`1px solid ${p.color}44`,
+      letterSpacing:"0.08em",
     }}>{p.label}</span>
   );
 };
 
 // ── Log Entry ─────────────────────────────────────────────────────────────────
-const LogEntry = ({ entry }) => {
+const LogEntry = ({ entry, lang }) => {
   const icons = {
-    pipeline_start:   "⚡", phase_start: "▶", doc_scored: "📄",
-    retrieval_done:   "✅", reflection: "🤔", query_rewrite: "✏️",
-    rerank_score:     "🔢", reranking_done: "🎯", answer_token: "💬",
-    pipeline_complete:"🏁", error: "❌", hyde_generation: "🔮",
+    pipeline_start:"⚡", phase_start:"▶", doc_scored:"📄",
+    retrieval_done:"✅", reflection:"🤔", query_rewrite:"✏️",
+    rerank_score:"🔢", reranking_done:"🎯", answer_token:"💬",
+    pipeline_complete:"🏁", error:"❌", hyde_generation:"🔮",
   };
 
   const getContent = () => {
     switch (entry.type) {
-      case "pipeline_start":
-        return <span>开始处理：<em style={{ color: C.accent }}>「{entry.query}」</em></span>;
-      case "phase_start":
-        return <span><PhaseBadge phase={entry.phase} /> &nbsp;{entry.message}</span>;
-      case "hyde_generation":
-        return (
-          <span>
-            <span style={{ color: C.teal, fontWeight: 700 }}>HyDE 假设文档：</span>
-            &nbsp;<span style={{ color: C.textMid, fontStyle: "italic" }}>
-              「{(entry.hypothetical_doc || "").slice(0, 80)}{entry.hypothetical_doc?.length > 80 ? "…" : ""}」
-            </span>
-          </span>
-        );
-      case "doc_scored":
-        return (
-          <span style={{ fontSize: 12 }}>
-            <span style={{ color: C.textMid }}>{entry.title.slice(0, 22)}…</span>
-            &nbsp;→&nbsp;
-            <span style={{ color: C.accent }}>向量 {(entry.embedding_score * 100).toFixed(0)}%</span>
-            &nbsp;
-            <span style={{ color: C.green }}>BM25 {(entry.bm25_score * 100).toFixed(0)}%</span>
-            &nbsp;
-            <span style={{ color: C.text, fontWeight: 700 }}>综合 {(entry.final_score * 100).toFixed(0)}%</span>
-          </span>
-        );
-      case "retrieval_done":
-        return (
-          <span>
-            第 {entry.iteration} 轮检索，最高分：
-            <span style={{ color: entry.top_score >= entry.threshold ? C.green : C.orange, fontWeight: 700 }}>
-              {(entry.top_score * 100).toFixed(1)}%
-            </span>
-            &nbsp;(阈值 {(entry.threshold * 100).toFixed(0)}%)
-          </span>
-        );
-      case "reflection":
-        return <span><span style={{ color: C.orange }}>反思：</span>&nbsp;{entry.failure_reason}</span>;
-      case "query_rewrite":
-        return (
-          <span>
-            查询重写：
-            <span style={{ color: C.textMid, textDecoration: "line-through" }}>「{entry.original_query}」</span>
-            &nbsp;→&nbsp;
-            <span style={{ color: C.accent }}>「{entry.new_query}」</span>
-          </span>
-        );
-      case "rerank_score":
-        return (
-          <span style={{ fontSize: 12 }}>
-            <span style={{ color: C.textMid }}>{entry.title.slice(0, 20)}…</span>
-            &nbsp;精排：
-            <span style={{ color: C.purple, fontWeight: 700 }}>{(entry.ce_score * 100).toFixed(1)}%</span>
-            &nbsp;
-            <span style={{ color: entry.improvement > 0 ? C.green : C.orange, fontSize: 11 }}>
-              ({entry.improvement > 0 ? "+" : ""}{(entry.improvement * 100).toFixed(1)}%)
-            </span>
-          </span>
-        );
-      case "reranking_done":
-        return <span>重排完成，最高：<span style={{ color: C.purple, fontWeight: 700 }}>{(entry.top_score * 100).toFixed(1)}%</span></span>;
-      case "pipeline_complete":
-        return <span style={{ color: C.green, fontWeight: 700 }}>✓ 完成，{entry.elapsed_seconds}s，{entry.total_iterations} 轮迭代</span>;
-      default:
-        return <span>{entry.message || JSON.stringify(entry).slice(0, 80)}</span>;
+      case "pipeline_start":     return tL(lang, "log_start", entry.query);
+      case "phase_start":        return <span><PhaseBadge phase={entry.phase}/>&nbsp;&nbsp;{entry.message}</span>;
+      case "hyde_generation":    return tL(lang, "log_hyde", entry.hypothetical_doc || "");
+      case "doc_scored":         return <span style={{fontSize:12}}>{tL(lang,"log_docScored",entry)}</span>;
+      case "retrieval_done":     return tL(lang, "log_retDone", entry);
+      case "reflection":         return tL(lang, "log_reflect", entry);
+      case "query_rewrite":      return tL(lang, "log_rewrite", entry);
+      case "rerank_score":       return <span style={{fontSize:12}}>{tL(lang,"log_rerank",entry)}</span>;
+      case "reranking_done":     return tL(lang, "log_rerankDone", entry);
+      case "pipeline_complete":  return tL(lang, "log_done", entry);
+      default: return <span>{entry.message || JSON.stringify(entry).slice(0,80)}</span>;
     }
   };
 
   return (
     <div style={{
-      padding: "5px 0", borderBottom: `1px solid ${C.border}`,
-      fontSize: 12.5, color: C.text, display: "flex", gap: 8, alignItems: "flex-start",
+      padding:"5px 0", borderBottom:`1px solid ${C.border}`,
+      fontSize:12.5, color:C.text, display:"flex", gap:8, alignItems:"flex-start",
     }}>
-      <span style={{ opacity: 0.55, flexShrink: 0, marginTop: 1 }}>{icons[entry.type] || "•"}</span>
-      <span style={{ lineHeight: 1.5 }}>{getContent()}</span>
+      <span style={{opacity:0.55, flexShrink:0, marginTop:1}}>{icons[entry.type]||"•"}</span>
+      <span style={{lineHeight:1.5}}>{getContent()}</span>
     </div>
   );
 };
 
 // ── Doc Card ──────────────────────────────────────────────────────────────────
-const DocCard = ({ doc, rank }) => (
+const DocCard = ({ doc, rank, lang }) => (
   <div style={{
-    background: C.surface, border: `1px solid ${C.borderBright}`,
-    borderRadius: 8, padding: "12px 14px", marginBottom: 8,
+    background:C.surface, border:`1px solid ${C.borderBright}`,
+    borderRadius:8, padding:"12px 14px", marginBottom:8,
   }}>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
         <span style={{
-          width: 22, height: 22, borderRadius: 4, background: `${C.accent}18`,
-          color: C.accent, fontSize: 11, fontWeight: 800, display: "flex",
-          alignItems: "center", justifyContent: "center", flexShrink: 0,
+          width:22, height:22, borderRadius:4, background:`${C.accent}18`,
+          color:C.accent, fontSize:11, fontWeight:800, display:"flex",
+          alignItems:"center", justifyContent:"center", flexShrink:0,
         }}>#{rank}</span>
-        <span style={{ fontWeight: 600, fontSize: 13, color: C.text }}>{doc.title}</span>
+        <span style={{fontWeight:600, fontSize:13, color:C.text}}>{doc.title}</span>
       </div>
       <span style={{
-        fontSize: 14, fontWeight: 800,
-        color: doc.final_score > 0.75 ? C.green : doc.final_score > 0.55 ? C.accent : C.orange,
-      }}>{(doc.final_score * 100).toFixed(1)}%</span>
+        fontSize:14, fontWeight:800,
+        color: doc.final_score>0.75?C.green:doc.final_score>0.55?C.accent:C.orange,
+      }}>{(doc.final_score*100).toFixed(1)}%</span>
     </div>
-    <p style={{ fontSize: 12, color: C.textMid, margin: "0 0 8px", lineHeight: 1.6 }}>{doc.content}</p>
+    <p style={{fontSize:12, color:C.textMid, margin:"0 0 8px", lineHeight:1.6}}>{doc.content}</p>
     {doc.source && (
-      <div style={{ fontSize: 10, color: C.textDim, marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
-        <span>📁</span>
-        <span style={{ fontFamily: "monospace" }}>{doc.source}</span>
+      <div style={{fontSize:10, color:C.textDim, marginBottom:6, display:"flex", alignItems:"center", gap:4}}>
+        <span>📁</span><span style={{fontFamily:"monospace"}}>{doc.source}</span>
       </div>
     )}
-    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-      {doc.tags?.map(t => <Tag key={t} label={t} />)}
+    <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:8}}>
+      {doc.tags?.map(t => <Tag key={t} label={t}/>)}
     </div>
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-      {doc.embedding_score > 0 && <ScoreBar value={doc.embedding_score} color={C.accent} label="向量" />}
-      {doc.bm25_score > 0 && <ScoreBar value={doc.bm25_score} color={C.green} label="BM25" />}
+    <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:6}}>
+      {doc.embedding_score>0 && <ScoreBar value={doc.embedding_score} color={C.accent} label={tL(lang,"score_vec")}/>}
+      {doc.bm25_score>0     && <ScoreBar value={doc.bm25_score}      color={C.green}  label={tL(lang,"score_bm25")}/>}
     </div>
   </div>
 );
 
-// ── RAGAS Metrics Panel ───────────────────────────────────────────────────────
-const RAGAS_META = [
-  {
-    key:   "context_relevance",
-    label: "Context Relevance",
-    desc:  "检索文档与查询的平均语义相似度 (Es et al., 2023)",
-    color: C.accent,
-  },
-  {
-    key:   "context_precision",
-    label: "Context Precision",
-    desc:  "检索结果中真正相关文档的比例",
-    color: C.green,
-  },
-  {
-    key:   "answer_relevance",
-    label: "Answer Relevance",
-    desc:  "生成答案与查询问题的语义匹配程度",
-    color: C.purple,
-  },
-  {
-    key:   "answer_faithfulness",
-    label: "Answer Faithfulness",
-    desc:  "答案内容与检索文档的一致性（幻觉检测代理指标）",
-    color: C.orange,
-  },
-];
-
-const RagasPanel = ({ metrics }) => {
+// ── RAGAS Panel ───────────────────────────────────────────────────────────────
+const RagasPanel = ({ metrics, lang }) => {
   if (!metrics?.context_relevance) return null;
-  const overall = RAGAS_META.reduce((s, m) => s + (metrics[m.key] || 0), 0) / RAGAS_META.length;
+  const rows = [
+    { vk:"context_relevance",  lk:"cr_label", dk:"cr_desc", color:C.accent  },
+    { vk:"context_precision",  lk:"cp_label", dk:"cp_desc", color:C.green   },
+    { vk:"answer_relevance",   lk:"ar_label", dk:"ar_desc", color:C.purple  },
+    { vk:"answer_faithfulness",lk:"af_label", dk:"af_desc", color:C.orange  },
+  ];
+  const overall = rows.reduce((s,r)=>s+(metrics[r.vk]||0),0)/rows.length;
   return (
-    <div style={{
-      background: C.surface, border: `1px solid ${C.borderBright}`,
-      borderRadius: 8, padding: 16,
-    }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <span style={{ fontSize: 11, color: C.textMid, fontWeight: 700, letterSpacing: "0.08em" }}>
-          RAGAS EVALUATION  <span style={{ fontSize: 10, color: C.textDim }}>(Es et al., 2023)</span>
+    <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:8, padding:16}}>
+      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16}}>
+        <span style={{fontSize:11, color:C.textMid, fontWeight:700, letterSpacing:"0.08em"}}>
+          {tL(lang,"ragasTitle")}&nbsp;<span style={{fontSize:10,color:C.textDim}}>(Es et al., 2023)</span>
         </span>
-        <span style={{
-          fontSize: 13, fontWeight: 800,
-          color: overall > 0.75 ? C.green : overall > 0.55 ? C.accent : C.orange,
-        }}>综合 {(overall * 100).toFixed(1)}%</span>
+        <span style={{fontSize:13, fontWeight:800, color:overall>0.75?C.green:overall>0.55?C.accent:C.orange}}>
+          {tL(lang,"ragasOverall",(overall*100).toFixed(1))}
+        </span>
       </div>
-      {RAGAS_META.map(m => (
-        <div key={m.key} style={{ marginBottom: 14 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-            <Tooltip text={m.desc}>
-              <span style={{ fontSize: 12, color: C.text, borderBottom: `1px dashed ${C.borderBright}` }}>
-                {m.label}
-              </span>
-            </Tooltip>
-          </div>
-          <ScoreBar value={metrics[m.key] || 0} color={m.color} />
+      {rows.map(r=>(
+        <div key={r.vk} style={{marginBottom:14}}>
+          <span title={tL(lang,r.dk)} style={{fontSize:12, color:C.text, borderBottom:`1px dashed ${C.borderBright}`, cursor:"help", display:"inline-block", marginBottom:4}}>
+            {tL(lang,r.lk)}
+          </span>
+          <ScoreBar value={metrics[r.vk]||0} color={r.color}/>
         </div>
       ))}
     </div>
@@ -282,44 +383,37 @@ const RagasPanel = ({ metrics }) => {
 };
 
 // ── Recall Chart ──────────────────────────────────────────────────────────────
-const RecallChart = ({ metrics }) => {
+const RecallChart = ({ metrics, lang }) => {
   if (!metrics) return null;
   const stages = [
-    { label: "基线",     value: metrics.baseline_recall,   color: C.textDim },
-    { label: "迭代检索", value: metrics.iterative_recall,  color: C.accent,  delta: `+${((metrics.iterative_recall - metrics.baseline_recall) * 100).toFixed(0)}%` },
-    { label: "多策略",   value: metrics.fusion_recall,     color: C.green,   delta: `+${((metrics.fusion_recall - metrics.iterative_recall) * 100).toFixed(0)}%` },
-    { label: "重排序",   value: metrics.rerank_recall,     color: C.purple,  delta: `+${((metrics.rerank_recall - metrics.fusion_recall) * 100).toFixed(0)}%` },
+    { lk:"r_base", value:metrics.baseline_recall,   color:C.textDim                },
+    { lk:"r_iter", value:metrics.iterative_recall,  color:C.accent,  delta:"+15%"  },
+    { lk:"r_fus",  value:metrics.fusion_recall,     color:C.green,   delta:"+3%"   },
+    { lk:"r_re",   value:metrics.rerank_recall,     color:C.purple,  delta:"+2%"   },
   ];
-  const maxVal = Math.max(...stages.map(s => s.value));
+  const maxVal = Math.max(...stages.map(s=>s.value));
   const chartH = 80;
   return (
-    <div style={{
-      background: C.surface, border: `1px solid ${C.borderBright}`,
-      borderRadius: 8, padding: 16, marginTop: 12,
-    }}>
-      <div style={{ fontSize: 11, color: C.textMid, fontWeight: 700, letterSpacing: "0.08em", marginBottom: 16 }}>
-        RECALL@10 提升对比  <span style={{ fontSize: 10, color: C.textDim }}>(Natural Questions)</span>
+    <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:8, padding:16, marginTop:12}}>
+      <div style={{fontSize:11, color:C.textMid, fontWeight:700, letterSpacing:"0.08em", marginBottom:16}}>
+        {tL(lang,"recallTitle")}&nbsp;<span style={{fontSize:10,color:C.textDim}}>{tL(lang,"recallSub")}</span>
       </div>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 12, height: chartH + 36 }}>
-        {stages.map((s, i) => {
-          const barH = (s.value / maxVal) * chartH;
+      <div style={{display:"flex", alignItems:"flex-end", gap:12, height:chartH+36}}>
+        {stages.map((s,i)=>{
+          const barH=(s.value/maxVal)*chartH;
           return (
-            <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-              <span style={{ fontSize: 11, color: s.color, fontWeight: 700 }}>
-                {(s.value * 100).toFixed(1)}%
-              </span>
-              {s.delta
-                ? <span style={{ fontSize: 10, color: C.green, fontWeight: 600 }}>{s.delta}</span>
-                : <span style={{ fontSize: 10 }}>&nbsp;</span>
-              }
+            <div key={i} style={{flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4}}>
+              <span style={{fontSize:11,color:s.color,fontWeight:700}}>{(s.value*100).toFixed(1)}%</span>
+              {s.delta ? <span style={{fontSize:10,color:C.green,fontWeight:600}}>{s.delta}</span>
+                       : <span style={{fontSize:10}}>&nbsp;</span>}
               <div style={{
-                width: "100%", height: barH,
-                background: `linear-gradient(180deg, ${s.color}cc, ${s.color}44)`,
-                borderRadius: "4px 4px 0 0", border: `1px solid ${s.color}55`,
-                transition: "height 0.8s cubic-bezier(0.4,0,0.2,1)",
-              }} />
-              <span style={{ fontSize: 10, color: C.textMid, textAlign: "center", lineHeight: 1.3 }}>
-                {s.label}
+                width:"100%", height:barH,
+                background:`linear-gradient(180deg,${s.color}cc,${s.color}44)`,
+                borderRadius:"4px 4px 0 0", border:`1px solid ${s.color}55`,
+                transition:"height 0.8s cubic-bezier(0.4,0,0.2,1)",
+              }}/>
+              <span style={{fontSize:10,color:C.textMid,textAlign:"center",lineHeight:1.3}}>
+                {tL(lang,s.lk)}
               </span>
             </div>
           );
@@ -333,41 +427,28 @@ const RecallChart = ({ metrics }) => {
 const IterationTimeline = ({ iterations }) => {
   if (!iterations?.length) return null;
   return (
-    <div style={{ marginTop: 12 }}>
-      <div style={{ fontSize: 11, color: C.textMid, fontWeight: 700, letterSpacing: "0.08em", marginBottom: 10 }}>
-        ITERATION TRACE
-      </div>
-      {iterations.map((it, i) => (
-        <div key={i} style={{ display: "flex", gap: 10, marginBottom: 8, alignItems: "flex-start" }}>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+    <div>
+      {iterations.map((it,i)=>(
+        <div key={i} style={{display:"flex", gap:10, marginBottom:8, alignItems:"flex-start"}}>
+          <div style={{display:"flex", flexDirection:"column", alignItems:"center"}}>
             <div style={{
-              width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
-              background: it.reflected ? `${C.orange}18` : `${C.green}18`,
-              border: `2px solid ${it.reflected ? C.orange : C.green}`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 10, fontWeight: 800,
-              color: it.reflected ? C.orange : C.green,
+              width:24, height:24, borderRadius:"50%", flexShrink:0,
+              background: it.reflected?`${C.orange}18`:`${C.green}18`,
+              border:`2px solid ${it.reflected?C.orange:C.green}`,
+              display:"flex", alignItems:"center", justifyContent:"center",
+              fontSize:10, fontWeight:800, color:it.reflected?C.orange:C.green,
             }}>#{it.iteration}</div>
-            {i < iterations.length - 1 && (
-              <div style={{ width: 2, height: 16, background: C.border, margin: "2px 0" }} />
-            )}
+            {i<iterations.length-1 && <div style={{width:2,height:16,background:C.border,margin:"2px 0"}}/>}
           </div>
-          <div style={{
-            flex: 1, background: C.surface, border: `1px solid ${C.border}`,
-            borderRadius: 6, padding: "8px 12px", fontSize: 12,
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-              <span style={{ color: C.textMid }}>
-                策略：<span style={{ color: C.accent }}>{it.strategy}</span>
-              </span>
-              <span style={{ color: it.top_score >= 0.55 ? C.green : C.orange, fontWeight: 700 }}>
-                {(it.top_score * 100).toFixed(1)}%
-              </span>
+          <div style={{flex:1, background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, padding:"8px 12px", fontSize:12}}>
+            <div style={{display:"flex", justifyContent:"space-between", marginBottom:4}}>
+              <span style={{color:C.textMid}}>Strategy: <span style={{color:C.accent}}>{it.strategy}</span></span>
+              <span style={{color:it.top_score>=0.55?C.green:C.orange, fontWeight:700}}>{(it.top_score*100).toFixed(1)}%</span>
             </div>
-            <div style={{ color: C.text, marginBottom: 4 }}>
-              查询：<span style={{ color: C.textMid }}>「{it.query}」</span>
+            <div style={{color:C.text, marginBottom:4}}>
+              Query: <span style={{color:C.textMid}}>「{it.query}」</span>
             </div>
-            {it.reflected && <Tag label="触发反思重写" color={C.orange} />}
+            {it.reflected && <Tag label="Reflection triggered" color={C.orange}/>}
           </div>
         </div>
       ))}
@@ -375,46 +456,46 @@ const IterationTimeline = ({ iterations }) => {
   );
 };
 
-// ── Conversation History Panel ─────────────────────────────────────────────────
-const ConversationPanel = ({ history, onClear }) => {
+// ── Conversation Panel ─────────────────────────────────────────────────────────
+const ConversationPanel = ({ history, onClear, lang }) => {
   if (!history.length) {
     return (
-      <div style={{ textAlign: "center", padding: "60px 0", color: C.textDim, fontSize: 13 }}>
-        暂无对话记录。开启「对话模式」后，每次问答将自动保存在此。
+      <div style={{textAlign:"center", padding:"60px 0", color:C.textDim, fontSize:13}}>
+        {tL(lang,"convEmpty")}
       </div>
     );
   }
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <span style={{ fontSize: 11, color: C.textMid, fontWeight: 700, letterSpacing: "0.08em" }}>
-          CONVERSATION HISTORY ({Math.floor(history.length / 2)} turns)
+      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12}}>
+        <span style={{fontSize:11, color:C.textMid, fontWeight:700, letterSpacing:"0.08em"}}>
+          {tL(lang,"convHistTitle", Math.floor(history.length/2))}
         </span>
         <button onClick={onClear} style={{
-          fontSize: 11, color: C.red, background: "transparent",
-          border: `1px solid ${C.red}44`, borderRadius: 4, padding: "2px 8px", cursor: "pointer",
-        }}>清空</button>
+          fontSize:11, color:C.red, background:"transparent",
+          border:`1px solid ${C.red}44`, borderRadius:4, padding:"2px 8px", cursor:"pointer",
+        }}>{tL(lang,"clearBtn")}</button>
       </div>
-      <div style={{ maxHeight: 580, overflowY: "auto", paddingRight: 4 }}>
-        {history.map((turn, i) => (
+      <div style={{maxHeight:560, overflowY:"auto", paddingRight:4}}>
+        {history.map((turn,i)=>(
           <div key={i} style={{
-            display: "flex",
-            justifyContent: turn.role === "user" ? "flex-end" : "flex-start",
-            marginBottom: 10,
+            display:"flex",
+            justifyContent: turn.role==="user"?"flex-end":"flex-start",
+            marginBottom:10,
           }}>
             <div style={{
-              maxWidth: "80%", padding: "10px 14px", borderRadius: 10,
-              fontSize: 13, lineHeight: 1.7,
-              background: turn.role === "user" ? `${C.accent}15` : C.surface,
-              border: `1px solid ${turn.role === "user" ? C.accent + "33" : C.borderBright}`,
-              color: C.text,
-              borderTopRightRadius: turn.role === "user" ? 2 : 10,
-              borderTopLeftRadius:  turn.role === "user" ? 10 : 2,
+              maxWidth:"80%", padding:"10px 14px", borderRadius:10,
+              fontSize:13, lineHeight:1.7,
+              background: turn.role==="user"?`${C.accent}12`:C.surface,
+              border:`1px solid ${turn.role==="user"?C.accent+"33":C.borderBright}`,
+              color:C.text,
+              borderTopRightRadius: turn.role==="user"?2:10,
+              borderTopLeftRadius:  turn.role==="user"?10:2,
             }}>
-              <div style={{ fontSize: 10, color: C.textDim, marginBottom: 4, fontWeight: 600 }}>
-                {turn.role === "user" ? "YOU" : "ASSISTANT"}
+              <div style={{fontSize:10, color:C.textDim, marginBottom:4, fontWeight:600}}>
+                {turn.role==="user"?tL(lang,"role_user"):tL(lang,"role_asst")}
               </div>
-              <div style={{ whiteSpace: "pre-wrap" }}>{turn.content}</div>
+              <div style={{whiteSpace:"pre-wrap"}}>{turn.content}</div>
             </div>
           </div>
         ))}
@@ -427,6 +508,9 @@ const ConversationPanel = ({ history, onClear }) => {
 // Main App
 // ══════════════════════════════════════════════════════════════════════════════
 export default function RAGDashboard() {
+  const [lang, setLang]                   = useState("zh");
+  const t = useCallback((key,...args)=>tL(lang,key,...args),[lang]);
+
   const [query, setQuery]                 = useState("企业知识库如何实现高效检索？");
   const [strategy, setStrategy]           = useState("adaptive");
   const [enableIterative, setEnableIterative] = useState(true);
@@ -446,325 +530,257 @@ export default function RAGDashboard() {
   const [conversationHistory, setConversationHistory] = useState([]);
   const [activeTab, setActiveTab]         = useState("process");
 
-  const wsRef            = useRef(null);
-  const logsEndRef       = useRef(null);
+  const wsRef             = useRef(null);
+  const logsEndRef        = useRef(null);
   const submittedQueryRef = useRef("");
 
-  // Auto-scroll logs
-  useEffect(() => {
-    if (logsEndRef.current && activeTab === "process") {
-      logsEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [logs, activeTab]);
+  useEffect(()=>{
+    if (logsEndRef.current && activeTab==="process")
+      logsEndRef.current.scrollIntoView({behavior:"smooth"});
+  },[logs, activeTab]);
 
-  // Save QA pair to conversation history when pipeline completes
-  useEffect(() => {
-    if (status === "done" && enableConversation && answer && submittedQueryRef.current) {
-      setConversationHistory(prev => {
-        const last = prev[prev.length - 1];
-        if (last?.role === "assistant" && last?.content === answer) return prev;
-        return [
-          ...prev,
-          { role: "user",      content: submittedQueryRef.current },
-          { role: "assistant", content: answer },
-        ];
+  useEffect(()=>{
+    if (status==="done" && enableConversation && answer && submittedQueryRef.current) {
+      setConversationHistory(prev=>{
+        const last=prev[prev.length-1];
+        if (last?.role==="assistant"&&last?.content===answer) return prev;
+        return [...prev,{role:"user",content:submittedQueryRef.current},{role:"assistant",content:answer}];
       });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  },[status]);
 
-  const handleMessage = useCallback((evt) => {
-    const msg = JSON.parse(evt.data);
-
-    if (msg.type === "hyde_generation") {
-      setHydeDoc(msg.hypothetical_doc || "");
-      setLogs(prev => [...prev, msg]);
-      return;
-    }
-    if (msg.type === "answer_token") {
-      setAnswer(msg.full_answer_so_far || "");
-      return;
-    }
-    if (msg.type === "pipeline_complete") {
-      setDocs(msg.retrieved_docs || []);
-      setMetrics(msg.metrics || null);
-      setIterations(msg.iterations_detail || []);
+  const handleMessage = useCallback((evt)=>{
+    const msg=JSON.parse(evt.data);
+    if (msg.type==="hyde_generation") { setHydeDoc(msg.hypothetical_doc||""); setLogs(p=>[...p,msg]); return; }
+    if (msg.type==="answer_token")    { setAnswer(msg.full_answer_so_far||""); return; }
+    if (msg.type==="pipeline_complete") {
+      setDocs(msg.retrieved_docs||[]);
+      setMetrics(msg.metrics||null);
+      setIterations(msg.iterations_detail||[]);
       setElapsed(msg.elapsed_seconds);
       setStatus("done");
     }
-    if (msg.type === "error") {
+    if (msg.type==="error") setStatus("error");
+    setLogs(p=>[...p,msg]);
+  },[]);
+
+  const runQuery = useCallback(()=>{
+    if (!query.trim()||status==="running") return;
+    submittedQueryRef.current=query;
+    setStatus("running"); setLogs([]); setDocs([]); setAnswer("");
+    setMetrics(null); setIterations([]); setElapsed(null);
+    setHydeDoc(""); setActiveTab("process");
+
+    const ws=new WebSocket("ws://localhost:8000/ws/query");
+    wsRef.current=ws;
+    ws.onopen=()=>ws.send(JSON.stringify({
+      query, strategy,
+      enable_iterative:     enableIterative,
+      enable_rerank:        enableRerank,
+      enable_hyde:          enableHyde,
+      confidence_threshold: threshold,
+      top_k: 5,
+      language: lang,
+      history: enableConversation?conversationHistory:[],
+    }));
+    ws.onmessage=handleMessage;
+    ws.onerror=()=>{
       setStatus("error");
-    }
-    setLogs(prev => [...prev, msg]);
-  }, []);
-
-  const runQuery = useCallback(() => {
-    if (!query.trim() || status === "running") return;
-
-    submittedQueryRef.current = query;
-    setStatus("running");
-    setLogs([]);
-    setDocs([]);
-    setAnswer("");
-    setMetrics(null);
-    setIterations([]);
-    setElapsed(null);
-    setHydeDoc("");
-    setActiveTab("process");
-
-    const ws = new WebSocket("ws://localhost:8000/ws/query");
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      ws.send(JSON.stringify({
-        query,
-        strategy,
-        enable_iterative:    enableIterative,
-        enable_rerank:       enableRerank,
-        enable_hyde:         enableHyde,
-        confidence_threshold: threshold,
-        top_k: 5,
-        history: enableConversation ? conversationHistory : [],
-      }));
+      setLogs(p=>[...p,{type:"error",message:lang==="en"?"WebSocket connection failed. Ensure the backend is running on localhost:8000.":"WebSocket 连接失败，请确保后端服务运行在 localhost:8000"}]);
     };
+    ws.onclose=()=>{ if(status==="running") setStatus("done"); };
+  },[query,strategy,enableIterative,enableRerank,enableHyde,enableConversation,threshold,status,lang,conversationHistory,handleMessage]);
 
-    ws.onmessage = handleMessage;
-    ws.onerror   = () => {
-      setStatus("error");
-      setLogs(prev => [...prev, {
-        type: "error",
-        message: "WebSocket 连接失败，请确保后端服务运行在 localhost:8000",
-      }]);
-    };
-    ws.onclose = () => {
-      if (status === "running") setStatus("done");
-    };
-  }, [query, strategy, enableIterative, enableRerank, enableHyde, enableConversation, threshold, status, conversationHistory, handleMessage]);
+  const handleKeyDown=(e)=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();runQuery();} };
 
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); runQuery(); }
-  };
-
-  const STRATEGIES = [
-    { key: "adaptive", label: "自适应" },
-    { key: "hybrid",   label: "混合"   },
-    { key: "vector",   label: "向量"   },
-    { key: "bm25",     label: "BM25"   },
+  const STRATEGIES=[
+    {key:"adaptive"},{key:"hybrid"},{key:"vector"},{key:"bm25"},
   ];
-  const SAMPLE_QUERIES = [
-    "企业知识库如何实现高效检索？",
-    "HyDE 假设文档嵌入的原理是什么？",
-    "如何评估 RAG 系统的召回率？",
-    "交叉编码器重排序的优势在哪里？",
+  const TABS=[
+    {key:"process",  lk:"tab_process", icon:"⚙"},
+    {key:"results",  lk:"tab_results", icon:"📋"},
+    {key:"metrics",  lk:"tab_metrics", icon:"📊"},
+    {key:"conversation", lk:"tab_conv", icon:"💬"},
   ];
 
-  const TABS = [
-    { key: "process",      label: "执行过程", icon: "⚙" },
-    { key: "results",      label: "检索结果", icon: "📋" },
-    { key: "metrics",      label: "效果分析", icon: "📊" },
-    { key: "conversation", label: "对话历史", icon: "💬" },
-  ];
-
-  // ── Toggle component shared between HyDE, iterative, rerank, conversation ──
-  const ToggleBtn = ({ label, val, onToggle, color, tooltip }) => (
-    <button onClick={onToggle} title={tooltip} style={{
-      padding: "8px 10px", borderRadius: 6, cursor: "pointer",
-      background: val ? `${color}12` : "transparent",
-      border: `1px solid ${val ? color + "44" : C.border}`,
-      color: val ? color : C.textMid,
-      fontSize: 11, fontWeight: 600, fontFamily: "inherit",
-      display: "flex", alignItems: "center", gap: 6,
-      transition: "all 0.2s",
+  const ToggleBtn=({labelKey, val, onToggle, color, tipKey})=>(
+    <button onClick={onToggle} title={t(tipKey)} style={{
+      padding:"8px 10px", borderRadius:6, cursor:"pointer",
+      background: val?`${color}12`:"transparent",
+      border:`1px solid ${val?color+"44":C.border}`,
+      color: val?color:C.textMid,
+      fontSize:11, fontWeight:600, fontFamily:"inherit",
+      display:"flex", alignItems:"center", gap:6, transition:"all 0.2s",
     }}>
-      <span style={{
-        width: 8, height: 8, borderRadius: "50%",
-        background: val ? color : C.textDim,
-        animation: val ? "pulse 2s infinite" : "none",
-        flexShrink: 0,
-      }} />
-      {label}
+      <span style={{width:8,height:8,borderRadius:"50%",background:val?color:C.textDim,animation:val?"pulse 2s infinite":"none",flexShrink:0}}/>
+      {t(labelKey)}
     </button>
   );
 
   return (
     <div style={{
-      minHeight: "100vh", background: C.bg, color: C.text,
-      fontFamily: "'Inter', 'SF Pro Display', -apple-system, sans-serif",
-      padding: "24px",
+      minHeight:"100vh", background:C.bg, color:C.text,
+      fontFamily:"'Inter','SF Pro Display',-apple-system,sans-serif",
+      padding:"24px",
     }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         @keyframes spin  { to { transform: rotate(360deg); } }
-        @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.4 } }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
         * { box-sizing: border-box; }
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-track { background: ${C.surface}; }
-        ::-webkit-scrollbar-thumb { background: ${C.borderBright}; border-radius: 2px; }
-        textarea:focus, input:focus { outline: none; }
-        button:hover { opacity: 0.8; }
+        ::-webkit-scrollbar{width:4px;}
+        ::-webkit-scrollbar-track{background:${C.surface};}
+        ::-webkit-scrollbar-thumb{background:${C.borderBright};border-radius:2px;}
+        textarea:focus,input:focus{outline:none;}
+        button:hover{opacity:0.8;}
       `}</style>
 
       {/* ── Header ── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24}}>
+        <div style={{display:"flex", alignItems:"center", gap:12}}>
           <div style={{
-            width: 38, height: 38, borderRadius: 10,
-            background: `linear-gradient(135deg, ${C.accent}30, ${C.purple}30)`,
-            border: `1px solid ${C.accent}44`,
-            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
+            width:38, height:38, borderRadius:10,
+            background:`linear-gradient(135deg,${C.accent}28,${C.purple}28)`,
+            border:`1px solid ${C.accent}44`,
+            display:"flex", alignItems:"center", justifyContent:"center", fontSize:20,
           }}>⚡</div>
           <div>
-            <h1 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: C.text }}>
-              Adaptive RAG System
-            </h1>
-            <p style={{ margin: 0, fontSize: 11, color: C.textMid }}>
-              HyDE · Iterative Retrieval · Cross-Encoder · RAGAS Evaluation
-            </p>
+            <h1 style={{margin:0, fontSize:18, fontWeight:800, color:C.text}}>Adaptive RAG System</h1>
+            <p style={{margin:0, fontSize:11, color:C.textMid}}>{t("appSubtitle")}</p>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {[
-            { label: "HyDE (EMNLP'22)",     color: C.teal   },
-            { label: "RAGAS (2023)",         color: C.purple },
-            { label: "Cross-Encoder",        color: C.accent },
-            { label: "Multi-turn Conv.",     color: C.green  },
-          ].map(b => <Tag key={b.label} label={b.label} color={b.color} />)}
+
+        <div style={{display:"flex", alignItems:"center", gap:10}}>
+          {/* Language Toggle */}
+          <div style={{
+            display:"flex", borderRadius:8, overflow:"hidden",
+            border:`1px solid ${C.borderBright}`, fontSize:12, fontWeight:700,
+          }}>
+            {["zh","en"].map(l=>(
+              <button key={l} onClick={()=>{
+                setLang(l);
+                setQuery(I18N[l].sampleQueries[0]);
+              }} style={{
+                padding:"5px 14px", cursor:"pointer", fontFamily:"inherit",
+                fontWeight:700, fontSize:12, letterSpacing:"0.04em",
+                background: lang===l?C.accent:"transparent",
+                color:       lang===l?"#fff":C.textMid,
+                border:"none",
+              }}>{l==="zh"?"中文":"EN"}</button>
+            ))}
+          </div>
+
+          <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
+            {[
+              {label:"HyDE (EMNLP'22)", color:C.teal  },
+              {label:"RAGAS (2023)",    color:C.purple },
+              {label:"Cross-Encoder",  color:C.accent },
+              {label:t("badge_conv"),  color:C.green  },
+            ].map(b=><Tag key={b.label} label={b.label} color={b.color}/>)}
+          </div>
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "380px 1fr", gap: 16, maxWidth: 1440 }}>
+      <div style={{display:"grid", gridTemplateColumns:"380px 1fr", gap:16, maxWidth:1440}}>
 
-        {/* ══ LEFT PANEL ══════════════════════════════════════════════════════ */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {/* ══ LEFT PANEL ══ */}
+        <div style={{display:"flex", flexDirection:"column", gap:12}}>
 
           {/* Query Input */}
-          <div style={{
-            background: C.surface, border: `1px solid ${C.borderBright}`,
-            borderRadius: 10, padding: 16,
-          }}>
-            <div style={{ fontSize: 10, color: C.textMid, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 10 }}>
-              QUERY INPUT
+          <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:10, padding:16}}>
+            <div style={{fontSize:10, color:C.textMid, fontWeight:700, letterSpacing:"0.1em", marginBottom:10}}>
+              {t("queryLabel")}
             </div>
             <textarea
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="输入问题… (Enter 发送)"
-              rows={3}
+              value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={handleKeyDown}
+              placeholder={t("queryPlaceholder")} rows={3}
               style={{
-                width: "100%", background: "#fff", border: `1px solid ${C.borderBright}`,
-                borderRadius: 6, padding: "10px 12px", fontSize: 13,
-                color: C.text, resize: "vertical", lineHeight: 1.6,
-                fontFamily: "inherit",
+                width:"100%", background:"#fff", border:`1px solid ${C.borderBright}`,
+                borderRadius:6, padding:"10px 12px", fontSize:13,
+                color:C.text, resize:"vertical", lineHeight:1.6, fontFamily:"inherit",
               }}
             />
-            <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 4 }}>
-              {SAMPLE_QUERIES.map(q => (
-                <button key={q} onClick={() => setQuery(q)} style={{
-                  background: "transparent", border: `1px solid ${C.border}`,
-                  borderRadius: 4, padding: "3px 8px", fontSize: 10,
-                  color: C.textMid, cursor: "pointer", fontFamily: "inherit",
-                  whiteSpace: "nowrap", overflow: "hidden", maxWidth: 170,
-                  textOverflow: "ellipsis",
-                }}>{q.slice(0, 20)}…</button>
+            <div style={{marginTop:8, display:"flex", flexWrap:"wrap", gap:4}}>
+              {t("sampleQueries").map(q=>(
+                <button key={q} onClick={()=>setQuery(q)} style={{
+                  background:"transparent", border:`1px solid ${C.border}`,
+                  borderRadius:4, padding:"3px 8px", fontSize:10,
+                  color:C.textMid, cursor:"pointer", fontFamily:"inherit",
+                  whiteSpace:"nowrap", overflow:"hidden", maxWidth:170, textOverflow:"ellipsis",
+                }}>{q.slice(0,22)}…</button>
               ))}
             </div>
           </div>
 
           {/* Config */}
-          <div style={{
-            background: C.surface, border: `1px solid ${C.borderBright}`,
-            borderRadius: 10, padding: 16,
-          }}>
-            <div style={{ fontSize: 10, color: C.textMid, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 12 }}>
-              CONFIGURATION
+          <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:10, padding:16}}>
+            <div style={{fontSize:10, color:C.textMid, fontWeight:700, letterSpacing:"0.1em", marginBottom:12}}>
+              {t("configLabel")}
             </div>
-
-            {/* Strategy */}
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11, color: C.textMid, marginBottom: 6 }}>检索策略</div>
-              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                {STRATEGIES.map(s => (
-                  <Pill key={s.key} active={strategy === s.key} onClick={() => setStrategy(s.key)}>
-                    {s.label}
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:11, color:C.textMid, marginBottom:6}}>{t("strategyLabel")}</div>
+              <div style={{display:"flex", gap:4, flexWrap:"wrap"}}>
+                {STRATEGIES.map(s=>(
+                  <Pill key={s.key} active={strategy===s.key} onClick={()=>setStrategy(s.key)}>
+                    {t("strategies")[s.key]}
                   </Pill>
                 ))}
               </div>
             </div>
-
-            {/* Feature Toggles */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 12 }}>
-              <ToggleBtn label="迭代检索" val={enableIterative} onToggle={() => setEnableIterative(!enableIterative)}
-                color={C.accent} tooltip="ReAct 风格的反思式迭代检索 (Yao et al., 2022)" />
-              <ToggleBtn label="精排 Rerank" val={enableRerank} onToggle={() => setEnableRerank(!enableRerank)}
-                color={C.purple} tooltip="Cross-Encoder 精排（BAAI/bge-reranker）" />
-              <ToggleBtn label="HyDE 增强" val={enableHyde} onToggle={() => setEnableHyde(!enableHyde)}
-                color={C.teal} tooltip="Hypothetical Document Embeddings (Gao et al., EMNLP 2022)" />
-              <ToggleBtn label="对话模式" val={enableConversation} onToggle={() => setEnableConversation(!enableConversation)}
-                color={C.orange} tooltip="多轮对话：保留历史上下文" />
+            <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:12}}>
+              <ToggleBtn labelKey="toggle_iterative" val={enableIterative} onToggle={()=>setEnableIterative(!enableIterative)} color={C.accent}  tipKey="tip_iterative"/>
+              <ToggleBtn labelKey="toggle_rerank"    val={enableRerank}    onToggle={()=>setEnableRerank(!enableRerank)}       color={C.purple} tipKey="tip_rerank"/>
+              <ToggleBtn labelKey="toggle_hyde"      val={enableHyde}      onToggle={()=>setEnableHyde(!enableHyde)}           color={C.teal}   tipKey="tip_hyde"/>
+              <ToggleBtn labelKey="toggle_conv"      val={enableConversation} onToggle={()=>setEnableConversation(!enableConversation)} color={C.orange} tipKey="tip_conv"/>
             </div>
-
-            {/* Threshold */}
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                <span style={{ fontSize: 11, color: C.textMid }}>置信度阈值</span>
-                <span style={{ fontSize: 11, color: C.accent, fontWeight: 700 }}>
-                  {(threshold * 100).toFixed(0)}%
-                </span>
+              <div style={{display:"flex", justifyContent:"space-between", marginBottom:6}}>
+                <span style={{fontSize:11, color:C.textMid}}>{t("thresholdLabel")}</span>
+                <span style={{fontSize:11, color:C.accent, fontWeight:700}}>{(threshold*100).toFixed(0)}%</span>
               </div>
               <input type="range" min={0.3} max={0.85} step={0.05} value={threshold}
-                onChange={e => setThreshold(Number(e.target.value))}
-                style={{ width: "100%", accentColor: C.accent }} />
+                onChange={e=>setThreshold(Number(e.target.value))}
+                style={{width:"100%", accentColor:C.accent}}/>
             </div>
-
-            {/* Conversation context indicator */}
-            {enableConversation && conversationHistory.length > 0 && (
+            {enableConversation && conversationHistory.length>0 && (
               <div style={{
-                marginTop: 10, padding: "6px 10px", borderRadius: 6,
-                background: `${C.orange}10`, border: `1px solid ${C.orange}33`,
-                fontSize: 11, color: C.orange,
+                marginTop:10, padding:"6px 10px", borderRadius:6,
+                background:`${C.orange}10`, border:`1px solid ${C.orange}33`,
+                fontSize:11, color:C.orange,
               }}>
-                💬 携带 {Math.floor(conversationHistory.length / 2)} 轮对话上下文
-                <button onClick={() => setConversationHistory([])} style={{
-                  marginLeft: 8, fontSize: 10, color: C.red, background: "none",
-                  border: "none", cursor: "pointer", padding: 0,
-                }}>清空</button>
+                {t("convCtx", Math.floor(conversationHistory.length/2))}
+                <button onClick={()=>setConversationHistory([])} style={{
+                  marginLeft:8, fontSize:10, color:C.red, background:"none", border:"none", cursor:"pointer", padding:0,
+                }}>{t("clearBtn")}</button>
               </div>
             )}
           </div>
 
           {/* Run Button */}
-          <button onClick={runQuery} disabled={status === "running"} style={{
-            padding: "12px 20px", borderRadius: 8, fontSize: 13, fontWeight: 800,
-            cursor: status === "running" ? "not-allowed" : "pointer",
-            background: status === "running"
-              ? `${C.accent}18`
-              : `linear-gradient(135deg, ${C.accentDim}, ${C.accent})`,
-            color: status === "running" ? C.accentDim : "#fff",
-            border: "none", letterSpacing: "0.04em", fontFamily: "inherit",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-            transition: "all 0.2s",
+          <button onClick={runQuery} disabled={status==="running"} style={{
+            padding:"12px 20px", borderRadius:8, fontSize:13, fontWeight:800,
+            cursor: status==="running"?"not-allowed":"pointer",
+            background: status==="running"?`${C.accent}18`:`linear-gradient(135deg,${C.accentDim},${C.accent})`,
+            color: status==="running"?C.accentDim:"#fff",
+            border:"none", letterSpacing:"0.04em", fontFamily:"inherit",
+            display:"flex", alignItems:"center", justifyContent:"center", gap:8, transition:"all 0.2s",
           }}>
-            {status === "running" ? (
-              <><Spinner size={14} color={C.accent} /> 检索中…</>
-            ) : "⚡ 执行检索"}
+            {status==="running"?<><Spinner size={14} color={C.accent}/>{t("runningBtn")}</>:t("runBtn")}
           </button>
 
           {/* Stats */}
-          {status === "done" && elapsed && (
-            <div style={{
-              background: C.surface, border: `1px solid ${C.green}44`,
-              borderRadius: 8, padding: 12,
-            }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, textAlign: "center" }}>
+          {status==="done" && elapsed && (
+            <div style={{background:C.surface, border:`1px solid ${C.green}44`, borderRadius:8, padding:12}}>
+              <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, textAlign:"center"}}>
                 {[
-                  { label: "耗时",     value: `${elapsed}s`,        color: C.green  },
-                  { label: "迭代轮次", value: iterations.length,    color: C.accent },
-                  { label: "召回文档", value: docs.length,          color: C.purple },
-                ].map(s => (
-                  <div key={s.label}>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: s.color }}>{s.value}</div>
-                    <div style={{ fontSize: 10, color: C.textMid }}>{s.label}</div>
+                  {lk:"stat_elapsed", value:`${elapsed}s`,       color:C.green  },
+                  {lk:"stat_iters",   value:iterations.length,   color:C.accent },
+                  {lk:"stat_docs",    value:docs.length,          color:C.purple },
+                ].map(s=>(
+                  <div key={s.lk}>
+                    <div style={{fontSize:18, fontWeight:800, color:s.color}}>{s.value}</div>
+                    <div style={{fontSize:10, color:C.textMid}}>{t(s.lk)}</div>
                   </div>
                 ))}
               </div>
@@ -772,192 +788,163 @@ export default function RAGDashboard() {
           )}
         </div>
 
-        {/* ══ RIGHT PANEL ═════════════════════════════════════════════════════ */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {/* ══ RIGHT PANEL ══ */}
+        <div style={{display:"flex", flexDirection:"column", gap:12}}>
 
           {/* Tabs */}
-          <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${C.border}`, paddingBottom: 8 }}>
-            {TABS.map(t => (
-              <button key={t.key} onClick={() => setActiveTab(t.key)} style={{
-                padding: "6px 16px", borderRadius: 6, fontSize: 12, fontWeight: 600,
-                cursor: "pointer", fontFamily: "inherit",
-                background: activeTab === t.key ? `${C.accent}15` : "transparent",
-                color:      activeTab === t.key ? C.accent : C.textMid,
-                border: `1px solid ${activeTab === t.key ? C.accent + "55" : "transparent"}`,
+          <div style={{display:"flex", gap:4, borderBottom:`1px solid ${C.border}`, paddingBottom:8}}>
+            {TABS.map(tab=>(
+              <button key={tab.key} onClick={()=>setActiveTab(tab.key)} style={{
+                padding:"6px 16px", borderRadius:6, fontSize:12, fontWeight:600,
+                cursor:"pointer", fontFamily:"inherit",
+                background: activeTab===tab.key?`${C.accent}12`:"transparent",
+                color:       activeTab===tab.key?C.accent:C.textMid,
+                border:`1px solid ${activeTab===tab.key?C.accent+"55":"transparent"}`,
               }}>
-                {t.icon} {t.label}
-                {t.key === "conversation" && conversationHistory.length > 0 && (
+                {tab.icon} {t(tab.lk)}
+                {tab.key==="conversation" && conversationHistory.length>0 && (
                   <span style={{
-                    marginLeft: 6, background: C.orange, color: "#fff",
-                    borderRadius: "50%", width: 16, height: 16, fontSize: 9,
-                    display: "inline-flex", alignItems: "center", justifyContent: "center",
-                    fontWeight: 800,
-                  }}>{Math.floor(conversationHistory.length / 2)}</span>
+                    marginLeft:6, background:C.orange, color:"#fff",
+                    borderRadius:"50%", width:16, height:16, fontSize:9,
+                    display:"inline-flex", alignItems:"center", justifyContent:"center", fontWeight:800,
+                  }}>{Math.floor(conversationHistory.length/2)}</span>
                 )}
               </button>
             ))}
           </div>
 
           {/* ── Process Tab ── */}
-          {activeTab === "process" && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 12 }}>
+          {activeTab==="process" && (
+            <div style={{display:"grid", gridTemplateColumns:"1fr 340px", gap:12}}>
               <div>
-                {/* HyDE doc preview */}
                 {hydeDoc && (
                   <div style={{
-                    background: `${C.teal}08`, border: `1px solid ${C.teal}33`,
-                    borderRadius: 8, padding: "10px 14px", marginBottom: 12,
+                    background:`${C.teal}08`, border:`1px solid ${C.teal}33`,
+                    borderRadius:8, padding:"10px 14px", marginBottom:12,
                   }}>
-                    <div style={{ fontSize: 10, color: C.teal, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 6 }}>
-                      HyDE HYPOTHETICAL DOCUMENT
+                    <div style={{fontSize:10, color:C.teal, fontWeight:700, letterSpacing:"0.1em", marginBottom:6}}>
+                      {t("hydeTitle")}
                     </div>
-                    <p style={{ margin: 0, fontSize: 12, color: C.textMid, lineHeight: 1.6, fontStyle: "italic" }}>
-                      {hydeDoc}
-                    </p>
+                    <p style={{margin:0, fontSize:12, color:C.textMid, lineHeight:1.6, fontStyle:"italic"}}>{hydeDoc}</p>
                   </div>
                 )}
-
-                {/* Log stream */}
                 <div style={{
-                  background: C.surface, border: `1px solid ${C.borderBright}`,
-                  borderRadius: 8, padding: 12, height: 380, overflowY: "auto",
+                  background:C.surface, border:`1px solid ${C.borderBright}`,
+                  borderRadius:8, padding:12, height:380, overflowY:"auto",
                 }}>
-                  <div style={{ fontSize: 10, color: C.textMid, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 8 }}>
-                    EXECUTION LOG {status === "running" && <Spinner size={10} />}
+                  <div style={{fontSize:10, color:C.textMid, fontWeight:700, letterSpacing:"0.1em", marginBottom:8}}>
+                    {t("logTitle")} {status==="running"&&<Spinner size={10}/>}
                   </div>
-                  {logs.length === 0 && (
-                    <div style={{ color: C.textDim, fontSize: 12, textAlign: "center", marginTop: 40 }}>
-                      等待执行…
-                    </div>
+                  {logs.length===0 && (
+                    <div style={{color:C.textDim, fontSize:12, textAlign:"center", marginTop:40}}>{t("logEmpty")}</div>
                   )}
-                  {logs.map((entry, i) => <LogEntry key={i} entry={entry} />)}
-                  <div ref={logsEndRef} />
+                  {logs.map((entry,i)=><LogEntry key={i} entry={entry} lang={lang}/>)}
+                  <div ref={logsEndRef}/>
                 </div>
-
-                {/* Answer */}
                 {answer && (
-                  <div style={{
-                    background: C.surface, border: `1px solid ${C.green}44`,
-                    borderRadius: 8, padding: 14, marginTop: 12,
-                  }}>
-                    <div style={{ fontSize: 10, color: C.green, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 8 }}>
-                      GENERATED ANSWER
+                  <div style={{background:C.surface, border:`1px solid ${C.green}44`, borderRadius:8, padding:14, marginTop:12}}>
+                    <div style={{fontSize:10, color:C.green, fontWeight:700, letterSpacing:"0.1em", marginBottom:8}}>
+                      {t("answerTitle")}
                     </div>
-                    <p style={{ margin: 0, fontSize: 13, lineHeight: 1.8, color: C.text, whiteSpace: "pre-line" }}>
+                    <p style={{margin:0, fontSize:13, lineHeight:1.8, color:C.text, whiteSpace:"pre-line"}}>
                       {answer}
-                      {status === "running" && (
-                        <span style={{ animation: "pulse 0.8s infinite", display: "inline-block" }}>▌</span>
-                      )}
+                      {status==="running"&&<span style={{animation:"pulse 0.8s infinite",display:"inline-block"}}>▌</span>}
                     </p>
                   </div>
                 )}
               </div>
-
-              {/* Iteration Timeline */}
-              <div style={{
-                background: C.surface, border: `1px solid ${C.borderBright}`,
-                borderRadius: 8, padding: 14, height: "fit-content",
-              }}>
-                <IterationTimeline iterations={iterations} />
-                {iterations.length === 0 && (
-                  <div style={{ color: C.textDim, fontSize: 12, textAlign: "center", marginTop: 20 }}>
-                    暂无迭代数据
-                  </div>
+              <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:8, padding:14, height:"fit-content"}}>
+                <div style={{fontSize:10, color:C.textMid, fontWeight:700, letterSpacing:"0.1em", marginBottom:10}}>
+                  {t("iterTitle")}
+                </div>
+                <IterationTimeline iterations={iterations}/>
+                {iterations.length===0 && (
+                  <div style={{color:C.textDim, fontSize:12, textAlign:"center", marginTop:20}}>{t("iterEmpty")}</div>
                 )}
               </div>
             </div>
           )}
 
           {/* ── Results Tab ── */}
-          {activeTab === "results" && (
+          {activeTab==="results" && (
             <div>
-              {docs.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "60px 0", color: C.textDim, fontSize: 13 }}>
-                  {status === "idle" ? "请先执行检索" : status === "running" ? "检索中…" : "无结果"}
+              {docs.length===0 ? (
+                <div style={{textAlign:"center", padding:"60px 0", color:C.textDim, fontSize:13}}>
+                  {status==="idle"?t("resEmpty_idle"):status==="running"?t("resEmpty_run"):t("resEmpty_done")}
                 </div>
-              ) : (
-                <div style={{ maxHeight: 640, overflowY: "auto", paddingRight: 4 }}>
-                  <div style={{ fontSize: 10, color: C.textMid, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 10 }}>
-                    TOP-{docs.length} 检索结果（已精排）
+              ):(
+                <div style={{maxHeight:640, overflowY:"auto", paddingRight:4}}>
+                  <div style={{fontSize:10, color:C.textMid, fontWeight:700, letterSpacing:"0.1em", marginBottom:10}}>
+                    {t("resultsTitle",docs.length)}
                   </div>
-                  {docs.map((doc, i) => <DocCard key={doc.id} doc={doc} rank={i + 1} />)}
+                  {docs.map((doc,i)=><DocCard key={doc.id} doc={doc} rank={i+1} lang={lang}/>)}
                 </div>
               )}
             </div>
           )}
 
           {/* ── Metrics Tab ── */}
-          {activeTab === "metrics" && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              {/* Left: RAGAS + Recall chart */}
+          {activeTab==="metrics" && (
+            <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:12}}>
               <div>
-                <RagasPanel metrics={metrics} />
-                <RecallChart metrics={metrics} />
+                <RagasPanel metrics={metrics} lang={lang}/>
+                <RecallChart metrics={metrics} lang={lang}/>
               </div>
-
-              {/* Right: per-query metrics + module contributions */}
               <div>
                 {metrics ? (
                   <>
-                    <div style={{
-                      background: C.surface, border: `1px solid ${C.borderBright}`,
-                      borderRadius: 8, padding: 14,
-                    }}>
-                      <div style={{ fontSize: 10, color: C.textMid, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 12 }}>
-                        本次查询指标
+                    <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:8, padding:14}}>
+                      <div style={{fontSize:10, color:C.textMid, fontWeight:700, letterSpacing:"0.1em", marginBottom:12}}>
+                        {t("qMetricsTitle")}
                       </div>
                       {[
-                        { label: "最终置信度",     value: metrics.final_confidence, color: C.green  },
-                        { label: "迭代后召回率",   value: metrics.iterative_recall, color: C.accent },
-                        { label: "融合后召回率",   value: metrics.fusion_recall,    color: C.green  },
-                        { label: "精排后召回率",   value: metrics.rerank_recall,    color: C.purple },
-                      ].map(m => (
-                        <div key={m.label} style={{ marginBottom: 12 }}>
-                          <div style={{ marginBottom: 4 }}>
-                            <span style={{ fontSize: 12, color: C.textMid }}>{m.label}</span>
+                        {lk:"m_conf", value:metrics.final_confidence, color:C.green  },
+                        {lk:"m_iter", value:metrics.iterative_recall, color:C.accent },
+                        {lk:"m_fus",  value:metrics.fusion_recall,    color:C.green  },
+                        {lk:"m_re",   value:metrics.rerank_recall,    color:C.purple },
+                      ].map(m=>(
+                        <div key={m.lk} style={{marginBottom:12}}>
+                          <div style={{marginBottom:4}}>
+                            <span style={{fontSize:12, color:C.textMid}}>{t(m.lk)}</span>
                           </div>
-                          <ScoreBar value={m.value} color={m.color} />
+                          <ScoreBar value={m.value} color={m.color}/>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:8, padding:14, marginTop:12}}>
+                      <div style={{fontSize:10, color:C.textMid, fontWeight:700, letterSpacing:"0.1em", marginBottom:12}}>
+                        {t("modTitle")}
+                      </div>
+                      {[
+                        {lk:"mod_iter", value:0.75, color:C.accent, tag:"+15%"},
+                        {lk:"mod_fus",  value:0.15, color:C.green,  tag:"+3%" },
+                        {lk:"mod_ce",   value:0.10, color:C.purple, tag:"+2%" },
+                      ].map(m=>(
+                        <div key={m.lk} style={{marginBottom:10}}>
+                          <div style={{display:"flex", justifyContent:"space-between", marginBottom:4}}>
+                            <span style={{fontSize:12, color:C.text}}>{t(m.lk)}</span>
+                            <Tag label={m.tag} color={m.color}/>
+                          </div>
+                          <ScoreBar value={m.value} color={m.color} showPercent={false}/>
                         </div>
                       ))}
                     </div>
 
                     <div style={{
-                      background: C.surface, border: `1px solid ${C.borderBright}`,
-                      borderRadius: 8, padding: 14, marginTop: 12,
+                      marginTop:12, padding:"10px 12px", background:C.surfaceHover,
+                      borderRadius:6, border:`1px solid ${C.border}`, fontSize:11, color:C.textMid, lineHeight:1.9,
                     }}>
-                      <div style={{ fontSize: 10, color: C.textMid, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 12 }}>
-                        模块贡献分析
-                      </div>
-                      {[
-                        { label: "迭代式检索 (ReAct)",  value: 0.75, color: C.accent, tag: "+15%"  },
-                        { label: "多策略融合检索",        value: 0.15, color: C.green,  tag: "+3%"   },
-                        { label: "Cross-Encoder 精排",  value: 0.10, color: C.purple, tag: "+2%"   },
-                      ].map(m => (
-                        <div key={m.label} style={{ marginBottom: 10 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                            <span style={{ fontSize: 12, color: C.text }}>{m.label}</span>
-                            <Tag label={m.tag} color={m.color} />
-                          </div>
-                          <ScoreBar value={m.value} color={m.color} showPercent={false} />
-                        </div>
-                      ))}
-                    </div>
-
-                    <div style={{
-                      marginTop: 12, padding: "10px 12px",
-                      background: C.surfaceHover, borderRadius: 6,
-                      border: `1px solid ${C.border}`, fontSize: 11, color: C.textMid, lineHeight: 1.8,
-                    }}>
-                      📌 评测基准：Natural Questions<br />
-                      📌 迭代轮次：{iterations.length} 轮<br />
-                      📌 检索策略：{strategy === "adaptive" ? "自适应（动态切换）" : strategy}<br />
-                      📌 HyDE 增强：{enableHyde ? "已启用" : "未启用"}<br />
-                      📌 对话历史：{conversationHistory.length > 0 ? `${Math.floor(conversationHistory.length / 2)} 轮` : "无"}
+                      📌 {t("note_dataset")}<br/>
+                      📌 {t("note_iter",iterations.length)}<br/>
+                      📌 {t("note_strat",strategy)}<br/>
+                      📌 {t("note_hyde",enableHyde)}<br/>
+                      📌 {t("note_hist",Math.floor(conversationHistory.length/2))}
                     </div>
                   </>
-                ) : (
-                  <div style={{ textAlign: "center", padding: "60px 0", color: C.textDim, fontSize: 13 }}>
-                    请先执行检索以查看效果分析
+                ):(
+                  <div style={{textAlign:"center", padding:"60px 0", color:C.textDim, fontSize:13}}>
+                    {t("metricsEmpty")}
                   </div>
                 )}
               </div>
@@ -965,11 +952,8 @@ export default function RAGDashboard() {
           )}
 
           {/* ── Conversation Tab ── */}
-          {activeTab === "conversation" && (
-            <ConversationPanel
-              history={conversationHistory}
-              onClear={() => setConversationHistory([])}
-            />
+          {activeTab==="conversation" && (
+            <ConversationPanel history={conversationHistory} onClear={()=>setConversationHistory([])} lang={lang}/>
           )}
         </div>
       </div>

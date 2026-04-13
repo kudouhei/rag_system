@@ -42,6 +42,100 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
+# ── Bilingual message table ────────────────────────────────────────────────────
+# All user-facing strings are defined here so the pipeline is language-agnostic.
+
+_MSG: dict = {
+    # Pipeline event messages
+    "phase_hyde": {
+        "zh": "HyDE：生成假设文档以增强向量检索…",
+        "en": "HyDE: generating hypothetical document to enhance vector retrieval…",
+    },
+    "hyde_done": {
+        "zh": "假设文档生成完成，用于向量检索",
+        "en": "Hypothetical document generated — used for vector retrieval",
+    },
+    "phase_retrieval": {
+        "zh": "第 {iteration} 轮检索（{strategy}）：「{query}」",
+        "en": "Round {iteration} retrieval ({strategy}): \"{query}\"",
+    },
+    "phase_reranking": {
+        "zh": "{ce}精排 {n} 个候选文档…",
+        "en": "{ce}Reranking {n} candidate documents…",
+    },
+    "phase_generation": {
+        "zh": "DeepSeek 流式生成答案…",
+        "en": "Generating answer with DeepSeek (streaming)…",
+    },
+    "phase_ragas": {
+        "zh": "RAGAS 评估：计算检索与生成质量指标…",
+        "en": "RAGAS evaluation: computing retrieval & generation quality metrics…",
+    },
+    # Failure diagnostics
+    "failure_extreme": {
+        "zh": "检索分数极低，查询词与知识库词汇差异较大，需重写为更通用的术语",
+        "en": "Retrieval score very low — query vocabulary differs greatly from the knowledge base; rewrite with more general terms",
+    },
+    "failure_moderate": {
+        "zh": "召回文档相关性不足，查询语义与文档内容存在偏差，尝试更换检索角度",
+        "en": "Retrieved documents lack relevance — semantic mismatch between query and docs; try rephrasing from a different angle",
+    },
+    "failure_low": {
+        "zh": "召回文档相关性低于置信阈值",
+        "en": "Retrieved document relevance below confidence threshold",
+    },
+    # LLM system prompts
+    "sys_answer": {
+        "zh": (
+            "你是企业知识库问答助手。请根据以下参考文档准确、详细地回答用户问题。"
+            "如文档中信息不足，请如实说明，不要编造内容。回答使用中文，语言自然流畅。"
+        ),
+        "en": (
+            "You are an enterprise knowledge-base assistant. "
+            "Answer the user's question accurately and in detail based on the provided reference documents. "
+            "If the documents lack sufficient information, say so honestly — do not fabricate content. "
+            "Reply in English with clear, natural language."
+        ),
+    },
+    "usr_answer": {
+        "zh": "参考文档：\n{context}\n\n用户问题：{query}",
+        "en": "Reference documents:\n{context}\n\nUser question: {query}",
+    },
+    "sys_rewrite": {
+        "zh": "你是检索优化专家。根据失败原因重写查询，使其更易命中知识库。只输出重写后的查询，不超过30字。",
+        "en": "You are a retrieval optimisation expert. Rewrite the query based on the failure reason to better match the knowledge base. Output only the rewritten query (≤15 words).",
+    },
+    "usr_rewrite": {
+        "zh": "原始查询：{original}\n失败原因：{reason}",
+        "en": "Original query: {original}\nFailure reason: {reason}",
+    },
+    "sys_hyde": {
+        "zh": "你是一位知识渊博的文档作者。根据用户问题，生成一段可能出现在知识库中的文档段落。直接输出段落内容，不超过150字，不要包含问题本身。",
+        "en": "You are a knowledgeable document author. Given the user's question, write a concise passage (≤100 words) that might appear in the knowledge base to answer it. Output only the passage — do not include the question itself.",
+    },
+    # Fallback answer (no LLM key)
+    "fallback_prefix": {
+        "zh": "根据知识库文档「{title}」，针对问题「{query}」：\n\n",
+        "en": "Based on the knowledge base document \"{title}\", regarding the question \"{query}\":\n\n",
+    },
+    "fallback_suffix": {
+        "zh": "\n\n（提示：未配置 DEEPSEEK_API_KEY，以上为文档直接摘录。）",
+        "en": "\n\n(Note: DEEPSEEK_API_KEY not configured — the above is a direct document excerpt.)",
+    },
+    # Cross-encoder label
+    "ce_label": {
+        "zh": "Cross-Encoder ",
+        "en": "Cross-Encoder ",
+    },
+}
+
+
+def _t(key: str, lang: str = "zh", **kwargs) -> str:
+    """Resolve a bilingual message key, interpolating kwargs."""
+    entry = _MSG.get(key, {})
+    text  = entry.get(lang) or entry.get("zh") or key
+    return text.format(**kwargs) if kwargs else text
+
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 DOCS_DIR          = Path(os.getenv("DOCS_DIR", Path(__file__).parent / "docs"))
@@ -361,7 +455,7 @@ async def llm_call(messages: list, max_tokens: int = 100, temperature: float = 0
         return ""
 
 
-async def hyde_generate_hypothetical(query: str) -> str:
+async def hyde_generate_hypothetical(query: str, lang: str = "zh") -> str:
     """
     HyDE (Gao et al., EMNLP 2022):
     Generate a hypothetical document passage that would answer the query,
@@ -370,14 +464,8 @@ async def hyde_generate_hypothetical(query: str) -> str:
     """
     result = await llm_call(
         messages=[
-            {
-                "role": "system",
-                "content": (
-                    "你是一位知识渊博的文档作者。根据用户问题，生成一段可能出现在知识库中的"
-                    "文档段落来回答该问题。直接输出段落内容，不超过150字，不要包含问题本身。"
-                ),
-            },
-            {"role": "user", "content": query},
+            {"role": "system", "content": _t("sys_hyde", lang)},
+            {"role": "user",   "content": query},
         ],
         max_tokens=200,
         temperature=0.5,
@@ -385,18 +473,16 @@ async def hyde_generate_hypothetical(query: str) -> str:
     return result if result else query
 
 
-async def llm_rewrite_query(original: str, failure_reason: str) -> str:
+async def llm_rewrite_query(original: str, failure_reason: str, lang: str = "zh") -> str:
     result = await llm_call(
         messages=[
-            {
-                "role": "system",
-                "content": "你是检索优化专家。根据失败原因重写查询，使其更易命中知识库。只输出重写后的查询，不超过30字。",
-            },
-            {"role": "user", "content": f"原始查询：{original}\n失败原因：{failure_reason}"},
+            {"role": "system", "content": _t("sys_rewrite", lang)},
+            {"role": "user",   "content": _t("usr_rewrite", lang, original=original, reason=failure_reason)},
         ],
         max_tokens=60,
     )
-    return result if result else original + " 详细介绍"
+    fallback = (original + " 详细介绍") if lang == "zh" else (original + " detailed explanation")
+    return result if result else fallback
 
 
 async def llm_stream_answer(
@@ -404,33 +490,33 @@ async def llm_stream_answer(
     query: str,
     docs: List[dict],
     history: List[dict],
+    lang: str = "zh",
 ) -> str:
     """Stream LLM answer token-by-token; supports multi-turn conversation history."""
+    doc_label = "文档" if lang == "zh" else "Document"
     context = "\n\n".join(
-        f"【文档{i + 1}】{d['title']}\n{d['content']}"
+        f"【{doc_label}{i + 1}】{d['title']}\n{d['content']}"
         for i, d in enumerate(docs[:4])
     )
-    system_prompt = (
-        "你是企业知识库问答助手。请根据以下参考文档准确、详细地回答用户问题。"
-        "如文档中信息不足，请如实说明，不要编造内容。回答使用中文，语言自然流畅。"
-    )
-    user_prompt = f"参考文档：\n{context}\n\n用户问题：{query}"
+    system_prompt = _t("sys_answer", lang)
+    user_prompt   = _t("usr_answer", lang, context=context, query=query)
 
     if not llm_client:
         top = docs[0] if docs else {}
+        no_content = "暂无相关内容" if lang == "zh" else "No relevant content found."
         fallback = (
-            f"根据知识库文档「{top.get('title', '')}」，"
-            f"针对问题「{query}」：\n\n"
-            + top.get("content", "暂无相关内容")
-            + "\n\n（提示：未配置 DEEPSEEK_API_KEY，以上为文档直接摘录。）"
+            _t("fallback_prefix", lang, title=top.get("title", ""), query=query)
+            + top.get("content", no_content)
+            + _t("fallback_suffix", lang)
         )
         full = ""
-        for part in fallback.split("。"):
+        for part in fallback.split("。" if lang == "zh" else ". "):
             if not part.strip():
                 continue
-            full += part + "。"
+            sep = "。" if lang == "zh" else ". "
+            full += part + sep
             await ws.send_text(json.dumps({
-                "type": "answer_token", "token": part + "。", "full_answer_so_far": full,
+                "type": "answer_token", "token": part + sep, "full_answer_so_far": full,
             }))
             await asyncio.sleep(0.08)
         return full
@@ -511,6 +597,7 @@ class QueryRequest(BaseModel):
     enable_hyde: bool = False           # HyDE (Gao et al., EMNLP 2022)
     confidence_threshold: float = 0.55
     top_k: int = 5
+    language: str = "zh"               # "zh" | "en"
     history: List[ConversationTurn] = []
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -536,7 +623,8 @@ async def websocket_query(websocket: WebSocket) -> None:
 
 
 async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
-    t0 = time.time()
+    t0   = time.time()
+    lang = req.language or "zh"
     current_query = req.query
     iteration, max_iter = 0, 3
     all_iterations: List[dict] = []
@@ -546,29 +634,30 @@ async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
         "type": "pipeline_start",
         "query": req.query,
         "config": {
-            "strategy": req.strategy,
+            "strategy":         req.strategy,
             "enable_iterative": req.enable_iterative,
-            "enable_rerank": req.enable_rerank,
-            "enable_hyde": req.enable_hyde,
-            "threshold": req.confidence_threshold,
-            "total_docs": len(KNOWLEDGE_BASE),
-            "cross_encoder": cross_encoder is not None,
+            "enable_rerank":    req.enable_rerank,
+            "enable_hyde":      req.enable_hyde,
+            "threshold":        req.confidence_threshold,
+            "total_docs":       len(KNOWLEDGE_BASE),
+            "cross_encoder":    cross_encoder is not None,
+            "language":         lang,
         },
     }))
 
     # ── HyDE pre-processing ───────────────────────────────────────────────────
-    retrieval_text = current_query   # text used for vector retrieval
+    retrieval_text = current_query
     if req.enable_hyde:
         await ws.send_text(json.dumps({
             "type": "phase_start", "phase": "hyde",
-            "message": "HyDE：生成假设文档以增强向量检索…",
+            "message": _t("phase_hyde", lang),
         }))
-        hypothetical = await hyde_generate_hypothetical(current_query)
+        hypothetical   = await hyde_generate_hypothetical(current_query, lang)
         retrieval_text = hypothetical
         await ws.send_text(json.dumps({
             "type": "hyde_generation",
             "hypothetical_doc": hypothetical,
-            "message": "假设文档生成完成，用于向量检索",
+            "message": _t("hyde_done", lang),
         }))
         await asyncio.sleep(0.1)
 
@@ -582,7 +671,8 @@ async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
         await ws.send_text(json.dumps({
             "type": "phase_start", "phase": "retrieval",
             "iteration": iteration, "query": current_query,
-            "message": f"第 {iteration} 轮检索（{strategy}）：「{current_query}」",
+            "message": _t("phase_retrieval", lang,
+                          iteration=iteration, strategy=strategy, query=current_query),
         }))
 
         loop = asyncio.get_event_loop()
@@ -634,21 +724,21 @@ async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
             and top_score < req.confidence_threshold
         )
         if should_reflect:
-            reason = _diagnose_failure(top_score, req.confidence_threshold)
+            reason = _diagnose_failure(top_score, req.confidence_threshold, lang)
             await ws.send_text(json.dumps({
                 "type": "reflection", "iteration": iteration,
                 "failure_reason": reason,
                 "top_score": round(top_score, 3),
                 "threshold": req.confidence_threshold,
             }))
-            new_query = await llm_rewrite_query(current_query, reason)
+            new_query = await llm_rewrite_query(current_query, reason, lang)
             await ws.send_text(json.dumps({
                 "type": "query_rewrite",
                 "original_query": current_query, "new_query": new_query,
             }))
             all_iterations.append(_iter_summary(iteration, current_query, strategy, top_score, True, results))
-            current_query = new_query
-            retrieval_text = new_query   # reset HyDE text after rewrite
+            current_query  = new_query
+            retrieval_text = new_query
             await asyncio.sleep(0.1)
             continue
 
@@ -657,9 +747,10 @@ async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
 
     # ── Phase 3: Reranking ────────────────────────────────────────────────────
     if req.enable_rerank and results:
+        ce_pfx = _t("ce_label", lang) if cross_encoder else ""
         await ws.send_text(json.dumps({
             "type": "phase_start", "phase": "reranking",
-            "message": f"{'Cross-Encoder' if cross_encoder else '精排'} — 对 {len(results)} 个候选文档打分…",
+            "message": _t("phase_reranking", lang, ce=ce_pfx, n=len(results)),
         }))
         loop = asyncio.get_event_loop()
         results = await loop.run_in_executor(None, _rerank_docs, req.query, results)
@@ -667,8 +758,8 @@ async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
             await ws.send_text(json.dumps({
                 "type": "rerank_score",
                 "doc_id": doc["id"], "title": doc["title"],
-                "pre_score": round(doc["pre_rerank_score"], 3),
-                "ce_score":  round(doc["ce_score"], 3),
+                "pre_score":   round(doc["pre_rerank_score"], 3),
+                "ce_score":    round(doc["ce_score"], 3),
                 "improvement": round(doc["ce_score"] - doc["pre_rerank_score"], 3),
             }))
             await asyncio.sleep(0.06)
@@ -680,15 +771,15 @@ async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
     # ── Phase 4: Answer Generation (streaming LLM) ────────────────────────────
     await ws.send_text(json.dumps({
         "type": "phase_start", "phase": "generation",
-        "message": "DeepSeek 流式生成答案…",
+        "message": _t("phase_generation", lang),
     }))
     history_dicts = [h.model_dump() for h in req.history]
-    full_answer = await llm_stream_answer(ws, req.query, results[:4], history_dicts)
+    full_answer = await llm_stream_answer(ws, req.query, results[:4], history_dicts, lang)
 
     # ── Phase 5: RAGAS Evaluation ─────────────────────────────────────────────
     await ws.send_text(json.dumps({
         "type": "phase_start", "phase": "reflection",
-        "message": "RAGAS 评估：计算检索与生成质量指标…",
+        "message": _t("phase_ragas", lang),
     }))
     loop = asyncio.get_event_loop()
     ragas = await loop.run_in_executor(None, compute_ragas_metrics, req.query, results[:4], full_answer)
@@ -802,12 +893,12 @@ async def _rebuild_index() -> None:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _diagnose_failure(top_score: float, threshold: float) -> str:
+def _diagnose_failure(top_score: float, threshold: float, lang: str = "zh") -> str:
     if top_score < 0.35:
-        return "检索分数极低，查询词与知识库词汇差异较大，需重写为更通用的术语"
+        return _t("failure_extreme", lang)
     if top_score < threshold:
-        return "召回文档相关性不足，查询语义与文档内容存在偏差，尝试更换检索角度"
-    return "召回文档相关性低于置信阈值"
+        return _t("failure_moderate", lang)
+    return _t("failure_low", lang)
 
 
 def _iter_summary(iteration, query, strategy, top_score, reflected, results):
