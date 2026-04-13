@@ -17,5 +17,11 @@ openai>=1.30.0
 # Config
 python-dotenv>=1.0.0
 
+# Cross-Encoder reranking (optional — set RERANKER_MODEL=BAAI/bge-reranker-base)
+# sentence-transformers already includes CrossEncoder, no extra package needed
+
+# File upload support
+python-multipart>=0.0.9
+
 # PDF support (optional)
 pypdf>=4.0.0

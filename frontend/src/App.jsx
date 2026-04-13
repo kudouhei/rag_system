@@ -1,48 +1,49 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 
-// ── Color palette & design tokens ─────────────────────────────────────────
+// ── Color palette ──────────────────────────────────────────────────────────────
 const C = {
-  bg: "#ffffff",
-  surface: "#f8fafc",
+  bg:           "#ffffff",
+  surface:      "#f8fafc",
   surfaceHover: "#f1f5f9",
-  border: "#e2e8f0",
+  border:       "#e2e8f0",
   borderBright: "#cbd5e1",
-  accent: "#0284c7",
-  accentDim: "#0369a1",
-  accentGlow: "rgba(2,132,199,0.12)",
-  green: "#059669",
-  greenDim: "#047857",
-  orange: "#ea580c",
-  orangeDim: "#c2410c",
-  red: "#dc2626",
-  purple: "#7c3aed",
-  text: "#0f172a",
-  textMid: "#64748b",
-  textDim: "#94a3b8",
+  accent:       "#0284c7",
+  accentDim:    "#0369a1",
+  accentGlow:   "rgba(2,132,199,0.12)",
+  green:        "#059669",
+  greenDim:     "#047857",
+  orange:       "#ea580c",
+  orangeDim:    "#c2410c",
+  red:          "#dc2626",
+  purple:       "#7c3aed",
+  teal:         "#0891b2",
+  text:         "#0f172a",
+  textMid:      "#64748b",
+  textDim:      "#94a3b8",
 };
 
-// ── Utility Components ─────────────────────────────────────────────────────
+// ── Utility Components ────────────────────────────────────────────────────────
 
 const Tag = ({ label, color = C.accent }) => (
   <span style={{
     padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600,
-    background: `${color}22`, color, border: `1px solid ${color}44`,
+    background: `${color}18`, color, border: `1px solid ${color}40`,
     letterSpacing: "0.04em", whiteSpace: "nowrap",
   }}>{label}</span>
 );
 
 const ScoreBar = ({ value, color = C.accent, label, showPercent = true }) => (
   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-    {label && <span style={{ color: C.textMid, fontSize: 11, minWidth: 56 }}>{label}</span>}
+    {label && <span style={{ color: C.textMid, fontSize: 11, minWidth: 60 }}>{label}</span>}
     <div style={{ flex: 1, height: 6, background: C.border, borderRadius: 3, overflow: "hidden" }}>
       <div style={{
-        width: `${value * 100}%`, height: "100%", borderRadius: 3,
+        width: `${Math.min(value * 100, 100)}%`, height: "100%", borderRadius: 3,
         background: `linear-gradient(90deg, ${color}88, ${color})`,
         transition: "width 0.6s cubic-bezier(0.4,0,0.2,1)",
       }} />
     </div>
     {showPercent && (
-      <span style={{ color, fontSize: 11, fontWeight: 700, minWidth: 36, textAlign: "right" }}>
+      <span style={{ color, fontSize: 11, fontWeight: 700, minWidth: 38, textAlign: "right" }}>
         {(value * 100).toFixed(1)}%
       </span>
     )}
@@ -53,9 +54,9 @@ const Pill = ({ children, active, onClick, color = C.accent }) => (
   <button onClick={onClick} style={{
     padding: "6px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600,
     cursor: "pointer", transition: "all 0.2s", letterSpacing: "0.03em",
-    background: active ? `${color}22` : "transparent",
+    background: active ? `${color}18` : "transparent",
     color: active ? color : C.textMid,
-    border: `1px solid ${active ? color + "66" : C.border}`,
+    border: `1px solid ${active ? color + "55" : C.border}`,
     outline: "none",
   }}>{children}</button>
 );
@@ -68,20 +69,26 @@ const Spinner = ({ size = 16, color = C.accent }) => (
   }} />
 );
 
-// ── Phase Badge ──────────────────────────────────────────────────────────────
-const PHASES = {
-  retrieval: { label: "RETRIEVAL", color: C.accent },
-  reranking: { label: "RERANKING", color: C.purple },
-  generation: { label: "GENERATION", color: C.green },
-  reflection: { label: "REFLECTION", color: C.orange },
-};
+const Tooltip = ({ text, children }) => (
+  <span style={{ position: "relative", cursor: "help" }} title={text}>
+    {children}
+  </span>
+);
 
+// ── Phase Badge ───────────────────────────────────────────────────────────────
+const PHASES = {
+  retrieval:  { label: "RETRIEVAL",  color: C.accent  },
+  reranking:  { label: "RERANKING",  color: C.purple  },
+  generation: { label: "GENERATION", color: C.green   },
+  reflection: { label: "REFLECTION", color: C.orange  },
+  hyde:       { label: "HyDE",       color: C.teal    },
+};
 const PhaseBadge = ({ phase }) => {
   const p = PHASES[phase] || { label: phase.toUpperCase(), color: C.textMid };
   return (
     <span style={{
       padding: "2px 10px", borderRadius: 4, fontSize: 10, fontWeight: 800,
-      background: `${p.color}22`, color: p.color, border: `1px solid ${p.color}55`,
+      background: `${p.color}18`, color: p.color, border: `1px solid ${p.color}44`,
       letterSpacing: "0.08em",
     }}>{p.label}</span>
   );
@@ -90,22 +97,31 @@ const PhaseBadge = ({ phase }) => {
 // ── Log Entry ─────────────────────────────────────────────────────────────────
 const LogEntry = ({ entry }) => {
   const icons = {
-    pipeline_start: "⚡", phase_start: "▶", doc_scored: "📄",
-    retrieval_done: "✅", reflection: "🤔", query_rewrite: "✏️",
-    rerank_score: "🔢", reranking_done: "🎯", answer_token: "💬",
-    pipeline_complete: "🏁", error: "❌",
+    pipeline_start:   "⚡", phase_start: "▶", doc_scored: "📄",
+    retrieval_done:   "✅", reflection: "🤔", query_rewrite: "✏️",
+    rerank_score:     "🔢", reranking_done: "🎯", answer_token: "💬",
+    pipeline_complete:"🏁", error: "❌", hyde_generation: "🔮",
   };
-  
+
   const getContent = () => {
     switch (entry.type) {
       case "pipeline_start":
-        return <span>开始处理查询：<em style={{ color: C.accent }}>「{entry.query}」</em></span>;
+        return <span>开始处理：<em style={{ color: C.accent }}>「{entry.query}」</em></span>;
       case "phase_start":
         return <span><PhaseBadge phase={entry.phase} /> &nbsp;{entry.message}</span>;
+      case "hyde_generation":
+        return (
+          <span>
+            <span style={{ color: C.teal, fontWeight: 700 }}>HyDE 假设文档：</span>
+            &nbsp;<span style={{ color: C.textMid, fontStyle: "italic" }}>
+              「{(entry.hypothetical_doc || "").slice(0, 80)}{entry.hypothetical_doc?.length > 80 ? "…" : ""}」
+            </span>
+          </span>
+        );
       case "doc_scored":
         return (
           <span style={{ fontSize: 12 }}>
-            <span style={{ color: C.textMid }}>{entry.title.slice(0, 20)}…</span>
+            <span style={{ color: C.textMid }}>{entry.title.slice(0, 22)}…</span>
             &nbsp;→&nbsp;
             <span style={{ color: C.accent }}>向量 {(entry.embedding_score * 100).toFixed(0)}%</span>
             &nbsp;
@@ -117,7 +133,7 @@ const LogEntry = ({ entry }) => {
       case "retrieval_done":
         return (
           <span>
-            第 {entry.iteration} 轮检索完成，最高分：
+            第 {entry.iteration} 轮检索，最高分：
             <span style={{ color: entry.top_score >= entry.threshold ? C.green : C.orange, fontWeight: 700 }}>
               {(entry.top_score * 100).toFixed(1)}%
             </span>
@@ -125,12 +141,7 @@ const LogEntry = ({ entry }) => {
           </span>
         );
       case "reflection":
-        return (
-          <span>
-            <span style={{ color: C.orange }}>反思触发：</span>
-            &nbsp;{entry.failure_reason}
-          </span>
-        );
+        return <span><span style={{ color: C.orange }}>反思：</span>&nbsp;{entry.failure_reason}</span>;
       case "query_rewrite":
         return (
           <span>
@@ -143,8 +154,8 @@ const LogEntry = ({ entry }) => {
       case "rerank_score":
         return (
           <span style={{ fontSize: 12 }}>
-            <span style={{ color: C.textMid }}>{entry.title.slice(0, 18)}…</span>
-            &nbsp;精排分：
+            <span style={{ color: C.textMid }}>{entry.title.slice(0, 20)}…</span>
+            &nbsp;精排：
             <span style={{ color: C.purple, fontWeight: 700 }}>{(entry.ce_score * 100).toFixed(1)}%</span>
             &nbsp;
             <span style={{ color: entry.improvement > 0 ? C.green : C.orange, fontSize: 11 }}>
@@ -153,46 +164,52 @@ const LogEntry = ({ entry }) => {
           </span>
         );
       case "reranking_done":
-        return <span>重排序完成，最高分：<span style={{ color: C.purple, fontWeight: 700 }}>{(entry.top_score * 100).toFixed(1)}%</span></span>;
+        return <span>重排完成，最高：<span style={{ color: C.purple, fontWeight: 700 }}>{(entry.top_score * 100).toFixed(1)}%</span></span>;
       case "pipeline_complete":
-        return <span style={{ color: C.green, fontWeight: 700 }}>✓ 管道完成，耗时 {entry.elapsed_seconds}s，共 {entry.total_iterations} 轮检索</span>;
+        return <span style={{ color: C.green, fontWeight: 700 }}>✓ 完成，{entry.elapsed_seconds}s，{entry.total_iterations} 轮迭代</span>;
       default:
         return <span>{entry.message || JSON.stringify(entry).slice(0, 80)}</span>;
     }
   };
-  
+
   return (
     <div style={{
       padding: "5px 0", borderBottom: `1px solid ${C.border}`,
       fontSize: 12.5, color: C.text, display: "flex", gap: 8, alignItems: "flex-start",
     }}>
-      <span style={{ opacity: 0.6, flexShrink: 0, marginTop: 1 }}>{icons[entry.type] || "•"}</span>
+      <span style={{ opacity: 0.55, flexShrink: 0, marginTop: 1 }}>{icons[entry.type] || "•"}</span>
       <span style={{ lineHeight: 1.5 }}>{getContent()}</span>
     </div>
   );
 };
 
-// ── Doc Card ─────────────────────────────────────────────────────────────────
+// ── Doc Card ──────────────────────────────────────────────────────────────────
 const DocCard = ({ doc, rank }) => (
   <div style={{
     background: C.surface, border: `1px solid ${C.borderBright}`,
     borderRadius: 8, padding: "12px 14px", marginBottom: 8,
-    transition: "border-color 0.2s",
   }}>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{
-          width: 22, height: 22, borderRadius: 4, background: `${C.accent}22`,
+          width: 22, height: 22, borderRadius: 4, background: `${C.accent}18`,
           color: C.accent, fontSize: 11, fontWeight: 800, display: "flex",
           alignItems: "center", justifyContent: "center", flexShrink: 0,
         }}>#{rank}</span>
         <span style={{ fontWeight: 600, fontSize: 13, color: C.text }}>{doc.title}</span>
       </div>
       <span style={{
-        fontSize: 14, fontWeight: 800, color: doc.final_score > 0.75 ? C.green : doc.final_score > 0.55 ? C.accent : C.orange,
+        fontSize: 14, fontWeight: 800,
+        color: doc.final_score > 0.75 ? C.green : doc.final_score > 0.55 ? C.accent : C.orange,
       }}>{(doc.final_score * 100).toFixed(1)}%</span>
     </div>
     <p style={{ fontSize: 12, color: C.textMid, margin: "0 0 8px", lineHeight: 1.6 }}>{doc.content}</p>
+    {doc.source && (
+      <div style={{ fontSize: 10, color: C.textDim, marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
+        <span>📁</span>
+        <span style={{ fontFamily: "monospace" }}>{doc.source}</span>
+      </div>
+    )}
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
       {doc.tags?.map(t => <Tag key={t} label={t} />)}
     </div>
@@ -203,27 +220,85 @@ const DocCard = ({ doc, rank }) => (
   </div>
 );
 
-// ── Metrics Chart ─────────────────────────────────────────────────────────────
-const MetricsPanel = ({ metrics }) => {
-  if (!metrics) return null;
-  
-  const stages = [
-    { label: "基线", value: metrics.baseline_recall, color: C.textDim },
-    { label: "迭代检索", value: metrics.iterative_recall, color: C.accent, delta: "+15%" },
-    { label: "多策略融合", value: metrics.fusion_recall, color: C.green, delta: "+3%" },
-    { label: "重排序", value: metrics.rerank_recall, color: C.purple, delta: "+2%" },
-  ];
-  
-  const maxVal = Math.max(...stages.map(s => s.value));
-  const chartH = 80;
-  
+// ── RAGAS Metrics Panel ───────────────────────────────────────────────────────
+const RAGAS_META = [
+  {
+    key:   "context_relevance",
+    label: "Context Relevance",
+    desc:  "检索文档与查询的平均语义相似度 (Es et al., 2023)",
+    color: C.accent,
+  },
+  {
+    key:   "context_precision",
+    label: "Context Precision",
+    desc:  "检索结果中真正相关文档的比例",
+    color: C.green,
+  },
+  {
+    key:   "answer_relevance",
+    label: "Answer Relevance",
+    desc:  "生成答案与查询问题的语义匹配程度",
+    color: C.purple,
+  },
+  {
+    key:   "answer_faithfulness",
+    label: "Answer Faithfulness",
+    desc:  "答案内容与检索文档的一致性（幻觉检测代理指标）",
+    color: C.orange,
+  },
+];
+
+const RagasPanel = ({ metrics }) => {
+  if (!metrics?.context_relevance) return null;
+  const overall = RAGAS_META.reduce((s, m) => s + (metrics[m.key] || 0), 0) / RAGAS_META.length;
   return (
     <div style={{
       background: C.surface, border: `1px solid ${C.borderBright}`,
-      borderRadius: 8, padding: "16px", marginTop: 12,
+      borderRadius: 8, padding: 16,
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <span style={{ fontSize: 11, color: C.textMid, fontWeight: 700, letterSpacing: "0.08em" }}>
+          RAGAS EVALUATION  <span style={{ fontSize: 10, color: C.textDim }}>(Es et al., 2023)</span>
+        </span>
+        <span style={{
+          fontSize: 13, fontWeight: 800,
+          color: overall > 0.75 ? C.green : overall > 0.55 ? C.accent : C.orange,
+        }}>综合 {(overall * 100).toFixed(1)}%</span>
+      </div>
+      {RAGAS_META.map(m => (
+        <div key={m.key} style={{ marginBottom: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+            <Tooltip text={m.desc}>
+              <span style={{ fontSize: 12, color: C.text, borderBottom: `1px dashed ${C.borderBright}` }}>
+                {m.label}
+              </span>
+            </Tooltip>
+          </div>
+          <ScoreBar value={metrics[m.key] || 0} color={m.color} />
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ── Recall Chart ──────────────────────────────────────────────────────────────
+const RecallChart = ({ metrics }) => {
+  if (!metrics) return null;
+  const stages = [
+    { label: "基线",     value: metrics.baseline_recall,   color: C.textDim },
+    { label: "迭代检索", value: metrics.iterative_recall,  color: C.accent,  delta: `+${((metrics.iterative_recall - metrics.baseline_recall) * 100).toFixed(0)}%` },
+    { label: "多策略",   value: metrics.fusion_recall,     color: C.green,   delta: `+${((metrics.fusion_recall - metrics.iterative_recall) * 100).toFixed(0)}%` },
+    { label: "重排序",   value: metrics.rerank_recall,     color: C.purple,  delta: `+${((metrics.rerank_recall - metrics.fusion_recall) * 100).toFixed(0)}%` },
+  ];
+  const maxVal = Math.max(...stages.map(s => s.value));
+  const chartH = 80;
+  return (
+    <div style={{
+      background: C.surface, border: `1px solid ${C.borderBright}`,
+      borderRadius: 8, padding: 16, marginTop: 12,
     }}>
       <div style={{ fontSize: 11, color: C.textMid, fontWeight: 700, letterSpacing: "0.08em", marginBottom: 16 }}>
-        召回率提升效果 (Natural Questions)
+        RECALL@10 提升对比  <span style={{ fontSize: 10, color: C.textDim }}>(Natural Questions)</span>
       </div>
       <div style={{ display: "flex", alignItems: "flex-end", gap: 12, height: chartH + 36 }}>
         {stages.map((s, i) => {
@@ -233,14 +308,14 @@ const MetricsPanel = ({ metrics }) => {
               <span style={{ fontSize: 11, color: s.color, fontWeight: 700 }}>
                 {(s.value * 100).toFixed(1)}%
               </span>
-              {s.delta && (
-                <span style={{ fontSize: 10, color: C.green, fontWeight: 600 }}>{s.delta}</span>
-              )}
-              {!s.delta && <span style={{ fontSize: 10 }}>&nbsp;</span>}
+              {s.delta
+                ? <span style={{ fontSize: 10, color: C.green, fontWeight: 600 }}>{s.delta}</span>
+                : <span style={{ fontSize: 10 }}>&nbsp;</span>
+              }
               <div style={{
                 width: "100%", height: barH,
-                background: `linear-gradient(180deg, ${s.color}cc, ${s.color}55)`,
-                borderRadius: "4px 4px 0 0", border: `1px solid ${s.color}66`,
+                background: `linear-gradient(180deg, ${s.color}cc, ${s.color}44)`,
+                borderRadius: "4px 4px 0 0", border: `1px solid ${s.color}55`,
                 transition: "height 0.8s cubic-bezier(0.4,0,0.2,1)",
               }} />
               <span style={{ fontSize: 10, color: C.textMid, textAlign: "center", lineHeight: 1.3 }}>
@@ -254,21 +329,20 @@ const MetricsPanel = ({ metrics }) => {
   );
 };
 
-// ── Iteration Timeline ────────────────────────────────────────────────────────
+// ── Iteration Timeline ─────────────────────────────────────────────────────────
 const IterationTimeline = ({ iterations }) => {
   if (!iterations?.length) return null;
-  
   return (
     <div style={{ marginTop: 12 }}>
       <div style={{ fontSize: 11, color: C.textMid, fontWeight: 700, letterSpacing: "0.08em", marginBottom: 10 }}>
-        检索迭代轨迹
+        ITERATION TRACE
       </div>
       {iterations.map((it, i) => (
         <div key={i} style={{ display: "flex", gap: 10, marginBottom: 8, alignItems: "flex-start" }}>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0 }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
             <div style={{
               width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
-              background: it.reflected ? `${C.orange}22` : `${C.green}22`,
+              background: it.reflected ? `${C.orange}18` : `${C.green}18`,
               border: `2px solid ${it.reflected ? C.orange : C.green}`,
               display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: 10, fontWeight: 800,
@@ -293,9 +367,7 @@ const IterationTimeline = ({ iterations }) => {
             <div style={{ color: C.text, marginBottom: 4 }}>
               查询：<span style={{ color: C.textMid }}>「{it.query}」</span>
             </div>
-            {it.reflected && (
-              <Tag label="触发反思重写" color={C.orange} />
-            )}
+            {it.reflected && <Tag label="触发反思重写" color={C.orange} />}
           </div>
         </div>
       ))}
@@ -303,40 +375,116 @@ const IterationTimeline = ({ iterations }) => {
   );
 };
 
-// ── Main App ──────────────────────────────────────────────────────────────────
+// ── Conversation History Panel ─────────────────────────────────────────────────
+const ConversationPanel = ({ history, onClear }) => {
+  if (!history.length) {
+    return (
+      <div style={{ textAlign: "center", padding: "60px 0", color: C.textDim, fontSize: 13 }}>
+        暂无对话记录。开启「对话模式」后，每次问答将自动保存在此。
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <span style={{ fontSize: 11, color: C.textMid, fontWeight: 700, letterSpacing: "0.08em" }}>
+          CONVERSATION HISTORY ({Math.floor(history.length / 2)} turns)
+        </span>
+        <button onClick={onClear} style={{
+          fontSize: 11, color: C.red, background: "transparent",
+          border: `1px solid ${C.red}44`, borderRadius: 4, padding: "2px 8px", cursor: "pointer",
+        }}>清空</button>
+      </div>
+      <div style={{ maxHeight: 580, overflowY: "auto", paddingRight: 4 }}>
+        {history.map((turn, i) => (
+          <div key={i} style={{
+            display: "flex",
+            justifyContent: turn.role === "user" ? "flex-end" : "flex-start",
+            marginBottom: 10,
+          }}>
+            <div style={{
+              maxWidth: "80%", padding: "10px 14px", borderRadius: 10,
+              fontSize: 13, lineHeight: 1.7,
+              background: turn.role === "user" ? `${C.accent}15` : C.surface,
+              border: `1px solid ${turn.role === "user" ? C.accent + "33" : C.borderBright}`,
+              color: C.text,
+              borderTopRightRadius: turn.role === "user" ? 2 : 10,
+              borderTopLeftRadius:  turn.role === "user" ? 10 : 2,
+            }}>
+              <div style={{ fontSize: 10, color: C.textDim, marginBottom: 4, fontWeight: 600 }}>
+                {turn.role === "user" ? "YOU" : "ASSISTANT"}
+              </div>
+              <div style={{ whiteSpace: "pre-wrap" }}>{turn.content}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Main App
+// ══════════════════════════════════════════════════════════════════════════════
 export default function RAGDashboard() {
-  const [query, setQuery] = useState("企业知识库如何实现高效检索？");
-  const [strategy, setStrategy] = useState("adaptive");
+  const [query, setQuery]                 = useState("企业知识库如何实现高效检索？");
+  const [strategy, setStrategy]           = useState("adaptive");
   const [enableIterative, setEnableIterative] = useState(true);
-  const [enableRerank, setEnableRerank] = useState(true);
-  const [threshold, setThreshold] = useState(0.55);
-  
-  const [status, setStatus] = useState("idle"); // idle | running | done | error
-  const [logs, setLogs] = useState([]);
-  const [docs, setDocs] = useState([]);
-  const [answer, setAnswer] = useState("");
-  const [metrics, setMetrics] = useState(null);
-  const [iterations, setIterations] = useState([]);
-  const [elapsed, setElapsed] = useState(null);
-  const [activeTab, setActiveTab] = useState("process"); // process | results | metrics
-  
-  const wsRef = useRef(null);
-  const logsEndRef = useRef(null);
-  
+  const [enableRerank, setEnableRerank]   = useState(true);
+  const [enableHyde, setEnableHyde]       = useState(false);
+  const [enableConversation, setEnableConversation] = useState(false);
+  const [threshold, setThreshold]         = useState(0.55);
+
+  const [status, setStatus]               = useState("idle");
+  const [logs, setLogs]                   = useState([]);
+  const [docs, setDocs]                   = useState([]);
+  const [answer, setAnswer]               = useState("");
+  const [metrics, setMetrics]             = useState(null);
+  const [iterations, setIterations]       = useState([]);
+  const [elapsed, setElapsed]             = useState(null);
+  const [hydeDoc, setHydeDoc]             = useState("");
+  const [conversationHistory, setConversationHistory] = useState([]);
+  const [activeTab, setActiveTab]         = useState("process");
+
+  const wsRef            = useRef(null);
+  const logsEndRef       = useRef(null);
+  const submittedQueryRef = useRef("");
+
+  // Auto-scroll logs
   useEffect(() => {
     if (logsEndRef.current && activeTab === "process") {
       logsEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [logs, activeTab]);
 
+  // Save QA pair to conversation history when pipeline completes
+  useEffect(() => {
+    if (status === "done" && enableConversation && answer && submittedQueryRef.current) {
+      setConversationHistory(prev => {
+        const last = prev[prev.length - 1];
+        if (last?.role === "assistant" && last?.content === answer) return prev;
+        return [
+          ...prev,
+          { role: "user",      content: submittedQueryRef.current },
+          { role: "assistant", content: answer },
+        ];
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
+
   const handleMessage = useCallback((evt) => {
     const msg = JSON.parse(evt.data);
-    
+
+    if (msg.type === "hyde_generation") {
+      setHydeDoc(msg.hypothetical_doc || "");
+      setLogs(prev => [...prev, msg]);
+      return;
+    }
     if (msg.type === "answer_token") {
       setAnswer(msg.full_answer_so_far || "");
       return;
     }
-    
     if (msg.type === "pipeline_complete") {
       setDocs(msg.retrieved_docs || []);
       setMetrics(msg.metrics || null);
@@ -344,17 +492,16 @@ export default function RAGDashboard() {
       setElapsed(msg.elapsed_seconds);
       setStatus("done");
     }
-    
     if (msg.type === "error") {
       setStatus("error");
     }
-    
     setLogs(prev => [...prev, msg]);
   }, []);
-  
+
   const runQuery = useCallback(() => {
     if (!query.trim() || status === "running") return;
-    
+
+    submittedQueryRef.current = query;
     setStatus("running");
     setLogs([]);
     setDocs([]);
@@ -362,108 +509,134 @@ export default function RAGDashboard() {
     setMetrics(null);
     setIterations([]);
     setElapsed(null);
+    setHydeDoc("");
     setActiveTab("process");
-    
+
     const ws = new WebSocket("ws://localhost:8000/ws/query");
     wsRef.current = ws;
-    
+
     ws.onopen = () => {
       ws.send(JSON.stringify({
         query,
         strategy,
-        enable_iterative: enableIterative,
-        enable_rerank: enableRerank,
+        enable_iterative:    enableIterative,
+        enable_rerank:       enableRerank,
+        enable_hyde:         enableHyde,
         confidence_threshold: threshold,
         top_k: 5,
+        history: enableConversation ? conversationHistory : [],
       }));
     };
-    
+
     ws.onmessage = handleMessage;
-    
-    ws.onerror = () => {
+    ws.onerror   = () => {
       setStatus("error");
-      setLogs(prev => [...prev, { type: "error", message: "WebSocket 连接失败，请确保后端服务运行在 localhost:8000" }]);
+      setLogs(prev => [...prev, {
+        type: "error",
+        message: "WebSocket 连接失败，请确保后端服务运行在 localhost:8000",
+      }]);
     };
-    
     ws.onclose = () => {
       if (status === "running") setStatus("done");
     };
-  }, [query, strategy, enableIterative, enableRerank, threshold, status, handleMessage]);
-  
+  }, [query, strategy, enableIterative, enableRerank, enableHyde, enableConversation, threshold, status, conversationHistory, handleMessage]);
+
   const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      runQuery();
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); runQuery(); }
   };
 
   const STRATEGIES = [
     { key: "adaptive", label: "自适应" },
-    { key: "hybrid", label: "混合" },
-    { key: "vector", label: "向量" },
-    { key: "bm25", label: "BM25" },
+    { key: "hybrid",   label: "混合"   },
+    { key: "vector",   label: "向量"   },
+    { key: "bm25",     label: "BM25"   },
   ];
-
   const SAMPLE_QUERIES = [
     "企业知识库如何实现高效检索？",
-    "什么是ReAct框架在检索中的应用？",
-    "如何评估RAG系统的召回率？",
-    "交叉编码器重排序的原理是什么？",
+    "HyDE 假设文档嵌入的原理是什么？",
+    "如何评估 RAG 系统的召回率？",
+    "交叉编码器重排序的优势在哪里？",
   ];
+
+  const TABS = [
+    { key: "process",      label: "执行过程", icon: "⚙" },
+    { key: "results",      label: "检索结果", icon: "📋" },
+    { key: "metrics",      label: "效果分析", icon: "📊" },
+    { key: "conversation", label: "对话历史", icon: "💬" },
+  ];
+
+  // ── Toggle component shared between HyDE, iterative, rerank, conversation ──
+  const ToggleBtn = ({ label, val, onToggle, color, tooltip }) => (
+    <button onClick={onToggle} title={tooltip} style={{
+      padding: "8px 10px", borderRadius: 6, cursor: "pointer",
+      background: val ? `${color}12` : "transparent",
+      border: `1px solid ${val ? color + "44" : C.border}`,
+      color: val ? color : C.textMid,
+      fontSize: 11, fontWeight: 600, fontFamily: "inherit",
+      display: "flex", alignItems: "center", gap: 6,
+      transition: "all 0.2s",
+    }}>
+      <span style={{
+        width: 8, height: 8, borderRadius: "50%",
+        background: val ? color : C.textDim,
+        animation: val ? "pulse 2s infinite" : "none",
+        flexShrink: 0,
+      }} />
+      {label}
+    </button>
+  );
 
   return (
     <div style={{
       minHeight: "100vh", background: C.bg, color: C.text,
-      fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+      fontFamily: "'Inter', 'SF Pro Display', -apple-system, sans-serif",
       padding: "24px",
     }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap');
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.5 } }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        @keyframes spin  { to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.4 } }
         * { box-sizing: border-box; }
         ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-track { background: ${C.bg}; }
-        ::-webkit-scrollbar-thumb { background: ${C.border}; border-radius: 2px; }
+        ::-webkit-scrollbar-track { background: ${C.surface}; }
+        ::-webkit-scrollbar-thumb { background: ${C.borderBright}; border-radius: 2px; }
         textarea:focus, input:focus { outline: none; }
-        button:hover { opacity: 0.85; }
+        button:hover { opacity: 0.8; }
       `}</style>
 
-      {/* Header */}
+      {/* ── Header ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: 8,
-              background: `linear-gradient(135deg, ${C.accent}44, ${C.purple}44)`,
-              border: `1px solid ${C.accent}66`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 18,
-            }}>⚡</div>
-            <div>
-              <h1 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: C.text, letterSpacing: "-0.02em" }}>
-                Adaptive RAG System
-              </h1>
-              <p style={{ margin: 0, fontSize: 11, color: C.textMid }}>
-                迭代检索 · 多策略融合 · 交叉编码器精排
-              </p>
-            </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{
+            width: 38, height: 38, borderRadius: 10,
+            background: `linear-gradient(135deg, ${C.accent}30, ${C.purple}30)`,
+            border: `1px solid ${C.accent}44`,
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
+          }}>⚡</div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: C.text }}>
+              Adaptive RAG System
+            </h1>
+            <p style={{ margin: 0, fontSize: 11, color: C.textMid }}>
+              HyDE · Iterative Retrieval · Cross-Encoder · RAGAS Evaluation
+            </p>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 6 }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {[
-            { label: "迭代检索 +15%", color: C.accent },
-            { label: "多策略 +3%", color: C.green },
-            { label: "重排序 +2%", color: C.purple },
+            { label: "HyDE (EMNLP'22)",     color: C.teal   },
+            { label: "RAGAS (2023)",         color: C.purple },
+            { label: "Cross-Encoder",        color: C.accent },
+            { label: "Multi-turn Conv.",     color: C.green  },
           ].map(b => <Tag key={b.label} label={b.label} color={b.color} />)}
         </div>
       </div>
-      
-      <div style={{ display: "grid", gridTemplateColumns: "380px 1fr", gap: 16, maxWidth: 1400 }}>
-        
-        {/* ── LEFT PANEL ──────────────────────────────────────────────────── */}
+
+      <div style={{ display: "grid", gridTemplateColumns: "380px 1fr", gap: 16, maxWidth: 1440 }}>
+
+        {/* ══ LEFT PANEL ══════════════════════════════════════════════════════ */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          
+
           {/* Query Input */}
           <div style={{
             background: C.surface, border: `1px solid ${C.borderBright}`,
@@ -476,7 +649,7 @@ export default function RAGDashboard() {
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="输入查询… (Enter 发送)"
+              placeholder="输入问题… (Enter 发送)"
               rows={3}
               style={{
                 width: "100%", background: "#fff", border: `1px solid ${C.borderBright}`,
@@ -485,23 +658,19 @@ export default function RAGDashboard() {
                 fontFamily: "inherit",
               }}
             />
-            
-            {/* Sample queries */}
             <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 4 }}>
               {SAMPLE_QUERIES.map(q => (
                 <button key={q} onClick={() => setQuery(q)} style={{
                   background: "transparent", border: `1px solid ${C.border}`,
                   borderRadius: 4, padding: "3px 8px", fontSize: 10,
                   color: C.textMid, cursor: "pointer", fontFamily: "inherit",
-                  whiteSpace: "nowrap", overflow: "hidden", maxWidth: 160,
+                  whiteSpace: "nowrap", overflow: "hidden", maxWidth: 170,
                   textOverflow: "ellipsis",
-                }}>
-                  {q.slice(0, 18)}…
-                </button>
+                }}>{q.slice(0, 20)}…</button>
               ))}
             </div>
           </div>
-          
+
           {/* Config */}
           <div style={{
             background: C.surface, border: `1px solid ${C.borderBright}`,
@@ -510,7 +679,8 @@ export default function RAGDashboard() {
             <div style={{ fontSize: 10, color: C.textMid, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 12 }}>
               CONFIGURATION
             </div>
-            
+
+            {/* Strategy */}
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 11, color: C.textMid, marginBottom: 6 }}>检索策略</div>
               <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
@@ -521,30 +691,20 @@ export default function RAGDashboard() {
                 ))}
               </div>
             </div>
-            
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
-              {[
-                { label: "迭代检索", val: enableIterative, set: setEnableIterative, color: C.accent },
-                { label: "交叉编码器精排", val: enableRerank, set: setEnableRerank, color: C.purple },
-              ].map(opt => (
-                <button key={opt.label} onClick={() => opt.set(!opt.val)} style={{
-                  padding: "8px 10px", borderRadius: 6, cursor: "pointer",
-                  background: opt.val ? `${opt.color}15` : "transparent",
-                  border: `1px solid ${opt.val ? opt.color + "55" : C.border}`,
-                  color: opt.val ? opt.color : C.textMid,
-                  fontSize: 11, fontWeight: 600, fontFamily: "inherit",
-                  display: "flex", alignItems: "center", gap: 6,
-                }}>
-                  <span style={{
-                    width: 8, height: 8, borderRadius: "50%",
-                    background: opt.val ? opt.color : C.textDim,
-                    animation: opt.val ? "pulse 2s infinite" : "none",
-                  }} />
-                  {opt.label}
-                </button>
-              ))}
+
+            {/* Feature Toggles */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 12 }}>
+              <ToggleBtn label="迭代检索" val={enableIterative} onToggle={() => setEnableIterative(!enableIterative)}
+                color={C.accent} tooltip="ReAct 风格的反思式迭代检索 (Yao et al., 2022)" />
+              <ToggleBtn label="精排 Rerank" val={enableRerank} onToggle={() => setEnableRerank(!enableRerank)}
+                color={C.purple} tooltip="Cross-Encoder 精排（BAAI/bge-reranker）" />
+              <ToggleBtn label="HyDE 增强" val={enableHyde} onToggle={() => setEnableHyde(!enableHyde)}
+                color={C.teal} tooltip="Hypothetical Document Embeddings (Gao et al., EMNLP 2022)" />
+              <ToggleBtn label="对话模式" val={enableConversation} onToggle={() => setEnableConversation(!enableConversation)}
+                color={C.orange} tooltip="多轮对话：保留历史上下文" />
             </div>
-            
+
+            {/* Threshold */}
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                 <span style={{ fontSize: 11, color: C.textMid }}>置信度阈值</span>
@@ -556,14 +716,29 @@ export default function RAGDashboard() {
                 onChange={e => setThreshold(Number(e.target.value))}
                 style={{ width: "100%", accentColor: C.accent }} />
             </div>
+
+            {/* Conversation context indicator */}
+            {enableConversation && conversationHistory.length > 0 && (
+              <div style={{
+                marginTop: 10, padding: "6px 10px", borderRadius: 6,
+                background: `${C.orange}10`, border: `1px solid ${C.orange}33`,
+                fontSize: 11, color: C.orange,
+              }}>
+                💬 携带 {Math.floor(conversationHistory.length / 2)} 轮对话上下文
+                <button onClick={() => setConversationHistory([])} style={{
+                  marginLeft: 8, fontSize: 10, color: C.red, background: "none",
+                  border: "none", cursor: "pointer", padding: 0,
+                }}>清空</button>
+              </div>
+            )}
           </div>
-          
+
           {/* Run Button */}
           <button onClick={runQuery} disabled={status === "running"} style={{
             padding: "12px 20px", borderRadius: 8, fontSize: 13, fontWeight: 800,
             cursor: status === "running" ? "not-allowed" : "pointer",
             background: status === "running"
-              ? `${C.accent}22`
+              ? `${C.accent}18`
               : `linear-gradient(135deg, ${C.accentDim}, ${C.accent})`,
             color: status === "running" ? C.accentDim : "#fff",
             border: "none", letterSpacing: "0.04em", fontFamily: "inherit",
@@ -574,7 +749,7 @@ export default function RAGDashboard() {
               <><Spinner size={14} color={C.accent} /> 检索中…</>
             ) : "⚡ 执行检索"}
           </button>
-          
+
           {/* Stats */}
           {status === "done" && elapsed && (
             <div style={{
@@ -583,9 +758,9 @@ export default function RAGDashboard() {
             }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, textAlign: "center" }}>
                 {[
-                  { label: "耗时", value: `${elapsed}s`, color: C.green },
-                  { label: "检索轮次", value: iterations.length, color: C.accent },
-                  { label: "召回文档", value: docs.length, color: C.purple },
+                  { label: "耗时",     value: `${elapsed}s`,        color: C.green  },
+                  { label: "迭代轮次", value: iterations.length,    color: C.accent },
+                  { label: "召回文档", value: docs.length,          color: C.purple },
                 ].map(s => (
                   <div key={s.label}>
                     <div style={{ fontSize: 18, fontWeight: 800, color: s.color }}>{s.value}</div>
@@ -596,37 +771,56 @@ export default function RAGDashboard() {
             </div>
           )}
         </div>
-        
-        {/* ── RIGHT PANEL ─────────────────────────────────────────────────── */}
+
+        {/* ══ RIGHT PANEL ═════════════════════════════════════════════════════ */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          
+
           {/* Tabs */}
           <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${C.border}`, paddingBottom: 8 }}>
-            {[
-              { key: "process", label: "执行过程", icon: "⚙" },
-              { key: "results", label: "检索结果", icon: "📋" },
-              { key: "metrics", label: "效果分析", icon: "📊" },
-            ].map(t => (
+            {TABS.map(t => (
               <button key={t.key} onClick={() => setActiveTab(t.key)} style={{
                 padding: "6px 16px", borderRadius: 6, fontSize: 12, fontWeight: 600,
                 cursor: "pointer", fontFamily: "inherit",
-                background: activeTab === t.key ? `${C.accent}22` : "transparent",
-                color: activeTab === t.key ? C.accent : C.textMid,
-                border: `1px solid ${activeTab === t.key ? C.accent + "66" : "transparent"}`,
+                background: activeTab === t.key ? `${C.accent}15` : "transparent",
+                color:      activeTab === t.key ? C.accent : C.textMid,
+                border: `1px solid ${activeTab === t.key ? C.accent + "55" : "transparent"}`,
               }}>
                 {t.icon} {t.label}
+                {t.key === "conversation" && conversationHistory.length > 0 && (
+                  <span style={{
+                    marginLeft: 6, background: C.orange, color: "#fff",
+                    borderRadius: "50%", width: 16, height: 16, fontSize: 9,
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    fontWeight: 800,
+                  }}>{Math.floor(conversationHistory.length / 2)}</span>
+                )}
               </button>
             ))}
           </div>
-          
-          {/* Process Tab */}
+
+          {/* ── Process Tab ── */}
           {activeTab === "process" && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 12 }}>
               <div>
+                {/* HyDE doc preview */}
+                {hydeDoc && (
+                  <div style={{
+                    background: `${C.teal}08`, border: `1px solid ${C.teal}33`,
+                    borderRadius: 8, padding: "10px 14px", marginBottom: 12,
+                  }}>
+                    <div style={{ fontSize: 10, color: C.teal, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 6 }}>
+                      HyDE HYPOTHETICAL DOCUMENT
+                    </div>
+                    <p style={{ margin: 0, fontSize: 12, color: C.textMid, lineHeight: 1.6, fontStyle: "italic" }}>
+                      {hydeDoc}
+                    </p>
+                  </div>
+                )}
+
                 {/* Log stream */}
                 <div style={{
                   background: C.surface, border: `1px solid ${C.borderBright}`,
-                  borderRadius: 8, padding: 12, height: 420, overflowY: "auto",
+                  borderRadius: 8, padding: 12, height: 380, overflowY: "auto",
                 }}>
                   <div style={{ fontSize: 10, color: C.textMid, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 8 }}>
                     EXECUTION LOG {status === "running" && <Spinner size={10} />}
@@ -639,7 +833,7 @@ export default function RAGDashboard() {
                   {logs.map((entry, i) => <LogEntry key={i} entry={entry} />)}
                   <div ref={logsEndRef} />
                 </div>
-                
+
                 {/* Answer */}
                 {answer && (
                   <div style={{
@@ -649,34 +843,32 @@ export default function RAGDashboard() {
                     <div style={{ fontSize: 10, color: C.green, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 8 }}>
                       GENERATED ANSWER
                     </div>
-                    <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.8, color: C.text, whiteSpace: "pre-line" }}>
+                    <p style={{ margin: 0, fontSize: 13, lineHeight: 1.8, color: C.text, whiteSpace: "pre-line" }}>
                       {answer}
-                      {status === "running" && <span style={{ animation: "pulse 0.8s infinite", display: "inline-block" }}>▌</span>}
+                      {status === "running" && (
+                        <span style={{ animation: "pulse 0.8s infinite", display: "inline-block" }}>▌</span>
+                      )}
                     </p>
                   </div>
                 )}
               </div>
-              
+
               {/* Iteration Timeline */}
               <div style={{
                 background: C.surface, border: `1px solid ${C.borderBright}`,
                 borderRadius: 8, padding: 14, height: "fit-content",
               }}>
-                <div style={{ fontSize: 10, color: C.textMid, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 8 }}>
-                  ITERATION TRACE
-                </div>
-                {iterations.length === 0 ? (
+                <IterationTimeline iterations={iterations} />
+                {iterations.length === 0 && (
                   <div style={{ color: C.textDim, fontSize: 12, textAlign: "center", marginTop: 20 }}>
-                    暂无数据
+                    暂无迭代数据
                   </div>
-                ) : (
-                  <IterationTimeline iterations={iterations} />
                 )}
               </div>
             </div>
           )}
-          
-          {/* Results Tab */}
+
+          {/* ── Results Tab ── */}
           {activeTab === "results" && (
             <div>
               {docs.length === 0 ? (
@@ -684,7 +876,7 @@ export default function RAGDashboard() {
                   {status === "idle" ? "请先执行检索" : status === "running" ? "检索中…" : "无结果"}
                 </div>
               ) : (
-                <div style={{ maxHeight: 620, overflowY: "auto", paddingRight: 4 }}>
+                <div style={{ maxHeight: 640, overflowY: "auto", paddingRight: 4 }}>
                   <div style={{ fontSize: 10, color: C.textMid, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 10 }}>
                     TOP-{docs.length} 检索结果（已精排）
                   </div>
@@ -693,80 +885,91 @@ export default function RAGDashboard() {
               )}
             </div>
           )}
-          
-          {/* Metrics Tab */}
+
+          {/* ── Metrics Tab ── */}
           {activeTab === "metrics" && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {/* Left: RAGAS + Recall chart */}
               <div>
-                <MetricsPanel metrics={metrics} />
-                
-                {metrics && (
-                  <div style={{
-                    background: C.surface, border: `1px solid ${C.borderBright}`,
-                    borderRadius: 8, padding: 14, marginTop: 12,
-                  }}>
-                    <div style={{ fontSize: 10, color: C.textMid, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 12 }}>
-                      各模块贡献
-                    </div>
-                    {[
-                      { label: "迭代式检索（ReAct）", value: 0.15 / 0.20, color: C.accent, tag: "+15%" },
-                      { label: "多策略融合检索", value: 0.03 / 0.20, color: C.green, tag: "+3%" },
-                      { label: "交叉编码器精排", value: 0.02 / 0.20, color: C.purple, tag: "+2%" },
-                    ].map(m => (
-                      <div key={m.label} style={{ marginBottom: 10 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                          <span style={{ fontSize: 12, color: C.text }}>{m.label}</span>
-                          <Tag label={m.tag} color={m.color} />
-                        </div>
-                        <ScoreBar value={m.value} color={m.color} showPercent={false} />
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <RagasPanel metrics={metrics} />
+                <RecallChart metrics={metrics} />
               </div>
-              
+
+              {/* Right: per-query metrics + module contributions */}
               <div>
-                {metrics && (
-                  <div style={{
-                    background: C.surface, border: `1px solid ${C.borderBright}`,
-                    borderRadius: 8, padding: 14,
-                  }}>
-                    <div style={{ fontSize: 10, color: C.textMid, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 12 }}>
-                      本次查询指标
-                    </div>
-                    {[
-                      { label: "最终置信度", value: metrics.final_confidence, color: C.green },
-                      { label: "迭代后召回率", value: metrics.iterative_recall, color: C.accent },
-                      { label: "融合后召回率", value: metrics.fusion_recall, color: C.green },
-                      { label: "精排后召回率", value: metrics.rerank_recall, color: C.purple },
-                    ].map(m => (
-                      <div key={m.label} style={{ marginBottom: 12 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                          <span style={{ fontSize: 12, color: C.textMid }}>{m.label}</span>
-                        </div>
-                        <ScoreBar value={m.value} color={m.color} />
-                      </div>
-                    ))}
-                    
+                {metrics ? (
+                  <>
                     <div style={{
-                      marginTop: 16, padding: "10px 12px",
-                      background: C.surfaceHover, borderRadius: 6,
-                      border: `1px solid ${C.border}`, fontSize: 11, color: C.textMid,
+                      background: C.surface, border: `1px solid ${C.borderBright}`,
+                      borderRadius: 8, padding: 14,
                     }}>
-                      📌 评测数据集：Natural Questions<br />
-                      📌 迭代轮次：{iterations.length} 轮<br />
-                      📌 检索策略：{strategy === "adaptive" ? "自适应（动态切换）" : strategy}
+                      <div style={{ fontSize: 10, color: C.textMid, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 12 }}>
+                        本次查询指标
+                      </div>
+                      {[
+                        { label: "最终置信度",     value: metrics.final_confidence, color: C.green  },
+                        { label: "迭代后召回率",   value: metrics.iterative_recall, color: C.accent },
+                        { label: "融合后召回率",   value: metrics.fusion_recall,    color: C.green  },
+                        { label: "精排后召回率",   value: metrics.rerank_recall,    color: C.purple },
+                      ].map(m => (
+                        <div key={m.label} style={{ marginBottom: 12 }}>
+                          <div style={{ marginBottom: 4 }}>
+                            <span style={{ fontSize: 12, color: C.textMid }}>{m.label}</span>
+                          </div>
+                          <ScoreBar value={m.value} color={m.color} />
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                )}
-                
-                {!metrics && (
+
+                    <div style={{
+                      background: C.surface, border: `1px solid ${C.borderBright}`,
+                      borderRadius: 8, padding: 14, marginTop: 12,
+                    }}>
+                      <div style={{ fontSize: 10, color: C.textMid, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 12 }}>
+                        模块贡献分析
+                      </div>
+                      {[
+                        { label: "迭代式检索 (ReAct)",  value: 0.75, color: C.accent, tag: "+15%"  },
+                        { label: "多策略融合检索",        value: 0.15, color: C.green,  tag: "+3%"   },
+                        { label: "Cross-Encoder 精排",  value: 0.10, color: C.purple, tag: "+2%"   },
+                      ].map(m => (
+                        <div key={m.label} style={{ marginBottom: 10 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                            <span style={{ fontSize: 12, color: C.text }}>{m.label}</span>
+                            <Tag label={m.tag} color={m.color} />
+                          </div>
+                          <ScoreBar value={m.value} color={m.color} showPercent={false} />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{
+                      marginTop: 12, padding: "10px 12px",
+                      background: C.surfaceHover, borderRadius: 6,
+                      border: `1px solid ${C.border}`, fontSize: 11, color: C.textMid, lineHeight: 1.8,
+                    }}>
+                      📌 评测基准：Natural Questions<br />
+                      📌 迭代轮次：{iterations.length} 轮<br />
+                      📌 检索策略：{strategy === "adaptive" ? "自适应（动态切换）" : strategy}<br />
+                      📌 HyDE 增强：{enableHyde ? "已启用" : "未启用"}<br />
+                      📌 对话历史：{conversationHistory.length > 0 ? `${Math.floor(conversationHistory.length / 2)} 轮` : "无"}
+                    </div>
+                  </>
+                ) : (
                   <div style={{ textAlign: "center", padding: "60px 0", color: C.textDim, fontSize: 13 }}>
-                    请先执行检索以查看分析
+                    请先执行检索以查看效果分析
                   </div>
                 )}
               </div>
             </div>
+          )}
+
+          {/* ── Conversation Tab ── */}
+          {activeTab === "conversation" && (
+            <ConversationPanel
+              history={conversationHistory}
+              onClear={() => setConversationHistory([])}
+            />
           )}
         </div>
       </div>
