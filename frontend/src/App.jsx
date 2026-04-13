@@ -2,23 +2,23 @@ import { useState, useRef, useEffect, useCallback } from "react";
 
 // ── Color palette & design tokens ─────────────────────────────────────────
 const C = {
-  bg: "#0a0c10",
-  surface: "#0f1318",
-  surfaceHover: "#141920",
-  border: "#1e2530",
-  borderBright: "#2a3545",
-  accent: "#00d4ff",
-  accentDim: "#0099bb",
-  accentGlow: "rgba(0,212,255,0.15)",
-  green: "#00e5a0",
-  greenDim: "#00b07a",
-  orange: "#ff8c42",
-  orangeDim: "#cc6a28",
-  red: "#ff4d6d",
-  purple: "#b06fff",
-  text: "#e8edf5",
-  textMid: "#8899aa",
-  textDim: "#4a5568",
+  bg: "#ffffff",
+  surface: "#f8fafc",
+  surfaceHover: "#f1f5f9",
+  border: "#e2e8f0",
+  borderBright: "#cbd5e1",
+  accent: "#0284c7",
+  accentDim: "#0369a1",
+  accentGlow: "rgba(2,132,199,0.12)",
+  green: "#059669",
+  greenDim: "#047857",
+  orange: "#ea580c",
+  orangeDim: "#c2410c",
+  red: "#dc2626",
+  purple: "#7c3aed",
+  text: "#0f172a",
+  textMid: "#64748b",
+  textDim: "#94a3b8",
 };
 
 // ── Utility Components ─────────────────────────────────────────────────────
@@ -479,7 +479,7 @@ export default function RAGDashboard() {
               placeholder="输入查询… (Enter 发送)"
               rows={3}
               style={{
-                width: "100%", background: C.bg, border: `1px solid ${C.border}`,
+                width: "100%", background: "#fff", border: `1px solid ${C.borderBright}`,
                 borderRadius: 6, padding: "10px 12px", fontSize: 13,
                 color: C.text, resize: "vertical", lineHeight: 1.6,
                 fontFamily: "inherit",
@@ -565,7 +565,7 @@ export default function RAGDashboard() {
             background: status === "running"
               ? `${C.accent}22`
               : `linear-gradient(135deg, ${C.accentDim}, ${C.accent})`,
-            color: status === "running" ? C.accentDim : "#000",
+            color: status === "running" ? C.accentDim : "#fff",
             border: "none", letterSpacing: "0.04em", fontFamily: "inherit",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
             transition: "all 0.2s",
@@ -750,7 +750,7 @@ export default function RAGDashboard() {
                     
                     <div style={{
                       marginTop: 16, padding: "10px 12px",
-                      background: C.bg, borderRadius: 6,
+                      background: C.surfaceHover, borderRadius: 6,
                       border: `1px solid ${C.border}`, fontSize: 11, color: C.textMid,
                     }}>
                       📌 评测数据集：Natural Questions<br />

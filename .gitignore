@@ -13,6 +13,10 @@ build/
 # Vite
 *.local
 
+# Sentence-transformers model cache
+backend/models/
+.cache/
+
 # Python
 __pycache__/
 *.py[cod]

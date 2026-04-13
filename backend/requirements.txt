@@ -2,3 +2,20 @@ fastapi==0.110.0
 uvicorn==0.27.1
 pydantic==2.6.1
 websockets==12.0
+
+# Embeddings
+sentence-transformers>=2.7.0
+numpy>=1.26.0
+
+# BM25 + Chinese tokenization
+rank-bm25>=0.2.2
+jieba>=0.42.1
+
+# LLM (DeepSeek uses OpenAI-compatible API)
+openai>=1.30.0
+
+# Config
+python-dotenv>=1.0.0
+
+# PDF support (optional)
+pypdf>=4.0.0
