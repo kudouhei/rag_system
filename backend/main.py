@@ -9,6 +9,9 @@ Implemented Techniques
   ④ Cross-Encoder Reranking                        BAAI/bge-reranker series
   ⑤ RAGAS-style Evaluation Framework               Es et al., 2023
   ⑥ Multi-turn Conversation Memory
+  ⑦ Contextual Chunking                            Anthropic, 2024
+  ⑧ Embedding Cache (incremental indexing)
+  ⑨ User Feedback Loop + Satisfaction Analytics
 
 Privacy & Compliance
 ────────────────────
@@ -24,15 +27,16 @@ Reranker    : BAAI/bge-reranker-base (optional, set RERANKER_MODEL)
 import os
 import json
 import time
+import hashlib
 import asyncio
 import logging
 import shutil
-from io import BytesIO
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -138,13 +142,19 @@ def _t(key: str, lang: str = "zh", **kwargs) -> str:
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-DOCS_DIR          = Path(os.getenv("DOCS_DIR", Path(__file__).parent / "docs"))
-EMBED_MODEL_NAME  = os.getenv("EMBED_MODEL", "BAAI/bge-small-zh-v1.5")
-RERANKER_MODEL    = os.getenv("RERANKER_MODEL", "")          # e.g. BAAI/bge-reranker-base
-DEEPSEEK_API_KEY  = os.getenv("DEEPSEEK_API_KEY", "")
-DEEPSEEK_MODEL    = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
-DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-MAX_CHUNK_CHARS   = int(os.getenv("MAX_CHUNK_CHARS", "600"))
+DOCS_DIR             = Path(os.getenv("DOCS_DIR", Path(__file__).parent / "docs"))
+EMBED_MODEL_NAME     = os.getenv("EMBED_MODEL", "BAAI/bge-small-zh-v1.5")
+RERANKER_MODEL       = os.getenv("RERANKER_MODEL", "")
+DEEPSEEK_API_KEY     = os.getenv("DEEPSEEK_API_KEY", "")
+DEEPSEEK_MODEL       = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+DEEPSEEK_BASE_URL    = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+MAX_CHUNK_CHARS      = int(os.getenv("MAX_CHUNK_CHARS", "600"))
+# ⑦ Contextual Chunking: prepend LLM-generated context to each chunk before embedding
+CONTEXTUAL_CHUNKING  = os.getenv("CONTEXTUAL_CHUNKING", "false").lower() == "true"
+# ⑧ Embedding cache directory
+CACHE_DIR            = Path(os.getenv("CACHE_DIR", Path(__file__).parent / "cache"))
+# Feedback log
+FEEDBACK_FILE        = Path(__file__).parent / "feedback.jsonl"
 
 # ── Global state ──────────────────────────────────────────────────────────────
 
@@ -233,17 +243,27 @@ def load_documents_from_folder(docs_dir: Path) -> List[dict]:
         if path.parent != docs_dir:
             tags.append(path.parent.name)
 
+        stat = path.stat()
         for i, chunk in enumerate(chunks):
             doc_id += 1
             title = path.stem + (f" (§{i + 1})" if len(chunks) > 1 else "")
             docs.append({
-                "id": f"doc_{doc_id:04d}",
-                "title": title,
-                "content": chunk,
-                "source": str(path.relative_to(docs_dir)),
-                "tags": tags,
+                "id":           f"doc_{doc_id:04d}",
+                "title":        title,
+                "content":      chunk,
+                "source":       str(path.relative_to(docs_dir)),
+                "tags":         tags,
                 "embedding_score": 0.0,
-                "bm25_score": 0.0,
+                "bm25_score":   0.0,
+                # ── Enhanced metadata for knowledge base management ──
+                "word_count":   len(chunk.split()),
+                "char_count":   len(chunk),
+                "chunk_index":  i,
+                "total_chunks": len(chunks),
+                "file_size_kb": round(stat.st_size / 1024, 1),
+                "mtime":        stat.st_mtime,
+                "file_mtime":   datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+                "indexed_at":   datetime.now(tz=timezone.utc).isoformat(),
             })
 
     logger.info("Loaded %d chunks from %d files in %s", len(docs), len({d["source"] for d in docs}), docs_dir)
@@ -262,12 +282,51 @@ def _init_embed_model() -> None:
 
 
 def _compute_doc_embeddings(docs: List[dict]) -> np.ndarray:
-    texts = [d["title"] + " " + d["content"] for d in docs]
+    # Use `embedding_content` if set by contextual chunking, otherwise title+content
+    texts = [
+        d.get("embedding_content") or (d["title"] + " " + d["content"])
+        for d in docs
+    ]
     logger.info("Encoding %d documents…", len(texts))
     embs = embed_model.encode(
         texts, normalize_embeddings=True, show_progress_bar=True, batch_size=32,
     )
     return embs.astype(np.float32)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ⑧ Embedding Cache — skip re-encoding unchanged document sets
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _doc_fingerprint(docs: List[dict]) -> str:
+    """SHA-256 fingerprint of document IDs + content (first 100 chars each)."""
+    raw = "|".join(
+        f"{d['id']}:{d['content'][:100]}"
+        for d in sorted(docs, key=lambda x: x["id"])
+    )
+    prefix = f"ctx={CONTEXTUAL_CHUNKING}|model={EMBED_MODEL_NAME}|"
+    return hashlib.sha256((prefix + raw).encode()).hexdigest()[:20]
+
+
+def _load_emb_cache(docs: List[dict]) -> Optional[np.ndarray]:
+    fp = _doc_fingerprint(docs)
+    cache_file = CACHE_DIR / f"emb_{fp}.npy"
+    if cache_file.exists():
+        logger.info("Embedding cache hit (%s) — skipping re-encoding", fp)
+        return np.load(str(cache_file)).astype(np.float32)
+    return None
+
+
+def _save_emb_cache(docs: List[dict], embs: np.ndarray) -> None:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    fp = _doc_fingerprint(docs)
+    cache_file = CACHE_DIR / f"emb_{fp}.npy"
+    np.save(str(cache_file), embs)
+    # Remove stale caches (keep only the latest)
+    for old in CACHE_DIR.glob("emb_*.npy"):
+        if old != cache_file:
+            old.unlink(missing_ok=True)
+    logger.info("Embedding cache saved (%s, %d docs)", fp, len(docs))
 
 
 def _encode_text(text: str) -> np.ndarray:
@@ -428,6 +487,73 @@ def compute_ragas_metrics(query: str, docs: List[dict], answer: str) -> dict:
 # LLM — DeepSeek API
 # ══════════════════════════════════════════════════════════════════════════════
 
+# ══════════════════════════════════════════════════════════════════════════════
+# ⑦ Contextual Chunking  (Anthropic, 2024)
+# ══════════════════════════════════════════════════════════════════════════════
+
+async def _contextualize_chunks(docs: List[dict], lang: str = "zh") -> List[dict]:
+    """
+    Anthropic Contextual Retrieval (2024):
+    For each chunk, use LLM to generate a 1-2 sentence document-level context
+    and store it as `embedding_content`.  The original `content` (shown to users)
+    is unchanged; only the embedded text is enriched.
+
+    This significantly reduces the "out-of-context chunk" problem, e.g.:
+      Raw chunk    : "Sales increased by 23% compared to last quarter."
+      With context : "This passage is from Q3 2024 Financial Report, discussing
+                      revenue performance. Sales increased by 23%..."
+    """
+    if not llm_client or not CONTEXTUAL_CHUNKING:
+        return docs
+
+    # Preload full text per source file (up to 2000 chars for context window)
+    source_cache: dict = {}
+    for doc in docs:
+        src = doc.get("source", "")
+        if src and src not in source_cache:
+            try:
+                source_cache[src] = (DOCS_DIR / src).read_text(encoding="utf-8")[:2000]
+            except Exception:
+                source_cache[src] = ""
+
+    logger.info("Contextual chunking: enriching %d chunks with LLM context…", len(docs))
+
+    sys_prompt = (
+        "You are a document analyst. Given a document excerpt and a chunk from it, "
+        "write 1-2 sentences of context explaining where this chunk sits in the document "
+        "and what it's about. Output ONLY the context sentences."
+    ) if lang == "en" else (
+        "你是文档分析专家。给定文档摘录和其中的一个段落，"
+        "用1-2句话说明该段落在文档中的位置和主题。只输出上下文说明。"
+    )
+
+    enriched, ok_count = [], 0
+    for doc in docs:
+        full_text = source_cache.get(doc.get("source", ""), "")
+        ctx = ""
+        if full_text:
+            ctx = await llm_call(
+                messages=[
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user",   "content":
+                        f"Document (excerpt):\n{full_text[:1200]}\n\nChunk:\n{doc['content'][:400]}"},
+                ],
+                max_tokens=80,
+                temperature=0.1,
+            )
+            await asyncio.sleep(0.05)   # gentle rate-limiting
+
+        d = doc.copy()
+        if ctx:
+            d["embedding_content"] = f"{ctx}\n\n{doc['content']}"
+            d["context_added"] = True
+            ok_count += 1
+        enriched.append(d)
+
+    logger.info("Contextual chunking: %d/%d chunks enriched", ok_count, len(docs))
+    return enriched
+
+
 def _init_llm_client() -> None:
     global llm_client
     if not DEEPSEEK_API_KEY:
@@ -563,22 +689,37 @@ async def llm_stream_answer(
 async def startup() -> None:
     global KNOWLEDGE_BASE, doc_embeddings
 
-    KNOWLEDGE_BASE = load_documents_from_folder(DOCS_DIR)
-    if not KNOWLEDGE_BASE:
+    raw_docs = load_documents_from_folder(DOCS_DIR)
+    if not raw_docs:
         logger.warning("No documents found in %s", DOCS_DIR)
-        KNOWLEDGE_BASE = [{
+        raw_docs = [{
             "id": "placeholder", "title": "暂无文档",
             "content": f"请在 {DOCS_DIR} 目录中添加 .txt/.md/.pdf 文件后重启服务。",
             "source": "", "tags": [], "embedding_score": 0.0, "bm25_score": 0.0,
+            "word_count": 0, "char_count": 0, "chunk_index": 0, "total_chunks": 1,
         }]
 
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, _init_embed_model)
-    doc_embeddings = await loop.run_in_executor(None, _compute_doc_embeddings, KNOWLEDGE_BASE)
-    await loop.run_in_executor(None, _init_bm25, KNOWLEDGE_BASE)
-    await loop.run_in_executor(None, _init_cross_encoder)
+
+    # ⑦ Contextual Chunking (optional, requires LLM key)
     _init_llm_client()
-    logger.info("✓ RAG system ready — %d chunks indexed", len(KNOWLEDGE_BASE))
+    docs = await _contextualize_chunks(raw_docs)
+
+    # ⑧ Embedding Cache — avoid re-encoding unchanged docs
+    cached = _load_emb_cache(docs)
+    if cached is not None:
+        doc_embeddings = cached
+    else:
+        doc_embeddings = await loop.run_in_executor(None, _compute_doc_embeddings, docs)
+        _save_emb_cache(docs, doc_embeddings)
+
+    await loop.run_in_executor(None, _init_bm25, docs)
+    await loop.run_in_executor(None, _init_cross_encoder)
+
+    KNOWLEDGE_BASE = docs
+    logger.info("✓ RAG system ready — %d chunks indexed (contextual=%s, cached=%s)",
+                len(KNOWLEDGE_BASE), CONTEXTUAL_CHUNKING, cached is not None)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Request / Response Models
@@ -829,14 +970,111 @@ async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
 @app.get("/health")
 async def health():
     return {
-        "status":          "ok",
-        "docs_count":      len(KNOWLEDGE_BASE),
-        "embed_model":     EMBED_MODEL_NAME,
-        "cross_encoder":   RERANKER_MODEL or "disabled (cosine fallback)",
-        "llm_enabled":     llm_client is not None,
-        "llm_model":       DEEPSEEK_MODEL if llm_client else None,
-        "hyde_available":  llm_client is not None,
+        "status":               "ok",
+        "docs_count":           len(KNOWLEDGE_BASE),
+        "embed_model":          EMBED_MODEL_NAME,
+        "cross_encoder":        RERANKER_MODEL or "disabled (cosine fallback)",
+        "llm_enabled":          llm_client is not None,
+        "llm_model":            DEEPSEEK_MODEL if llm_client else None,
+        "hyde_available":       llm_client is not None,
+        "contextual_chunking":  CONTEXTUAL_CHUNKING,
+        "embedding_cache_dir":  str(CACHE_DIR),
     }
+
+
+# ── ⑨ Knowledge Base Statistics ───────────────────────────────────────────────
+
+@app.get("/stats")
+async def get_stats():
+    """Comprehensive knowledge base analytics for operations teams."""
+    # Per-source breakdown
+    sources: dict = {}
+    total_words = 0
+    for d in KNOWLEDGE_BASE:
+        src = d.get("source") or "unknown"
+        if src not in sources:
+            sources[src] = {
+                "source":     src,
+                "chunks":     0,
+                "words":      0,
+                "file_size_kb": d.get("file_size_kb", 0),
+                "last_modified": d.get("file_mtime", ""),
+                "tags":       d.get("tags", []),
+            }
+        sources[src]["chunks"] += 1
+        sources[src]["words"]  += d.get("word_count", 0)
+        total_words            += d.get("word_count", 0)
+
+    # Freshness: flag sources not updated in > 90 days
+    now_ts = time.time()
+    stale_sources = []
+    for d in KNOWLEDGE_BASE:
+        mtime = d.get("mtime", now_ts)
+        if now_ts - mtime > 90 * 86400:
+            src = d.get("source", "")
+            if src and src not in stale_sources:
+                stale_sources.append(src)
+
+    # Feedback analytics
+    feedback_total, feedback_pos = 0, 0
+    if FEEDBACK_FILE.exists():
+        for line in FEEDBACK_FILE.read_text(encoding="utf-8").splitlines():
+            try:
+                r = json.loads(line)
+                feedback_total += 1
+                if r.get("rating", 0) > 0:
+                    feedback_pos += 1
+            except Exception:
+                pass
+
+    return {
+        "total_chunks":          len(KNOWLEDGE_BASE),
+        "total_sources":         len(sources),
+        "total_words":           total_words,
+        "contextual_chunking":   CONTEXTUAL_CHUNKING,
+        "sources": sorted(sources.values(), key=lambda x: x["source"]),
+        "stale_sources":         stale_sources,      # not updated in 90+ days
+        "feedback": {
+            "total":            feedback_total,
+            "positive":         feedback_pos,
+            "negative":         feedback_total - feedback_pos,
+            "satisfaction_rate": round(feedback_pos / feedback_total, 2)
+                                 if feedback_total > 0 else None,
+        },
+    }
+
+
+# ── ⑨ User Feedback Loop ──────────────────────────────────────────────────────
+
+class FeedbackRequest(BaseModel):
+    query:    str
+    answer:   str
+    rating:   int               # +1 = helpful, -1 = not helpful
+    comment:  Optional[str] = None
+    doc_ids:  List[str]    = []
+    language: str          = "zh"
+
+
+@app.post("/feedback")
+async def submit_feedback(req: FeedbackRequest):
+    """
+    Persist user feedback to a JSONL log.
+    Used for offline analysis: identify low-quality documents, coverage gaps,
+    and hallucination patterns.
+    """
+    record = {
+        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+        "query":     req.query,
+        "answer":    req.answer[:500],     # truncate to avoid bloat
+        "rating":    req.rating,
+        "comment":   req.comment,
+        "doc_ids":   req.doc_ids,
+        "language":  req.language,
+    }
+    with open(FEEDBACK_FILE, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    logger.info("Feedback recorded: rating=%+d, query=%r", req.rating, req.query[:60])
+    return {"status": "ok", "message": "Thank you for your feedback!"}
 
 
 @app.get("/docs_list")
@@ -848,48 +1086,104 @@ async def docs_list():
 
 
 @app.post("/upload")
-async def upload_document(file: UploadFile = File(...)):
+async def upload_documents(files: List[UploadFile] = File(...)):
     """
-    Upload a document (.txt / .md / .pdf) to the knowledge base.
-    The index is rebuilt automatically after upload.
+    Upload one or more documents (.txt / .md / .pdf) to the knowledge base.
+    All files are saved first, then a single index rebuild is triggered.
     """
     allowed = {".txt", ".md", ".pdf"}
-    suffix = Path(file.filename).suffix.lower()
-    if suffix not in allowed:
-        from fastapi import HTTPException
-        raise HTTPException(400, f"Unsupported file type: {suffix}. Allowed: {allowed}")
-
-    dest = DOCS_DIR / file.filename
     DOCS_DIR.mkdir(parents=True, exist_ok=True)
-    content = await file.read()
-    dest.write_bytes(content)
-    logger.info("Uploaded: %s (%d bytes)", file.filename, len(content))
 
-    # Rebuild index in background
+    results = []
+    for file in files:
+        suffix = Path(file.filename).suffix.lower()
+        if suffix not in allowed:
+            results.append({
+                "filename": file.filename,
+                "status":   "error",
+                "error":    f"Unsupported type '{suffix}'. Allowed: {sorted(allowed)}",
+            })
+            continue
+
+        try:
+            content = await file.read()
+            dest    = DOCS_DIR / Path(file.filename).name   # strip any path traversal
+            dest.write_bytes(content)
+            logger.info("Uploaded: %s (%d bytes)", dest.name, len(content))
+            results.append({
+                "filename":   dest.name,
+                "status":     "ok",
+                "size_bytes": len(content),
+                "size_kb":    round(len(content) / 1024, 1),
+            })
+        except Exception as e:
+            logger.error("Upload failed for %s: %s", file.filename, e)
+            results.append({"filename": file.filename, "status": "error", "error": str(e)})
+
+    ok_count = sum(1 for r in results if r["status"] == "ok")
+    if ok_count > 0:
+        asyncio.create_task(_rebuild_index())   # single rebuild after all files saved
+
+    return {
+        "uploaded": ok_count,
+        "errors":   len(results) - ok_count,
+        "files":    results,
+    }
+
+
+@app.delete("/docs/{filename}")
+async def delete_document(filename: str):
+    """
+    Delete a document from the knowledge base and rebuild the index.
+    Only files inside DOCS_DIR can be deleted (no path traversal).
+    """
+    # Resolve and validate path — prevent directory traversal
+    target = (DOCS_DIR / filename).resolve()
+    if not str(target).startswith(str(DOCS_DIR.resolve())):
+        raise HTTPException(400, "Invalid filename")
+    if not target.exists():
+        raise HTTPException(404, f"File not found: {filename}")
+
+    target.unlink()
+    logger.info("Deleted document: %s", filename)
     asyncio.create_task(_rebuild_index())
-    return {"status": "ok", "filename": file.filename, "size_bytes": len(content)}
+    return {"status": "ok", "deleted": filename}
 
 
 @app.post("/reload")
-async def reload_index():
-    """Force a full index rebuild (useful after manually adding files)."""
-    asyncio.create_task(_rebuild_index())
-    return {"status": "rebuilding", "message": "Index rebuild started in background"}
+async def reload_index(force: bool = False):
+    """
+    Trigger index rebuild.
+    - force=false (default): use embedding cache if docs unchanged
+    - force=true: always re-embed (needed after changing EMBED_MODEL or CONTEXTUAL_CHUNKING)
+    """
+    asyncio.create_task(_rebuild_index(force_reembed=force))
+    return {"status": "rebuilding", "force_reembed": force,
+            "message": "Index rebuild started in background"}
 
 
-async def _rebuild_index() -> None:
+async def _rebuild_index(force_reembed: bool = False) -> None:
     global KNOWLEDGE_BASE, doc_embeddings
-    logger.info("Rebuilding index…")
-    docs = load_documents_from_folder(DOCS_DIR)
-    if not docs:
+    logger.info("Rebuilding index (force_reembed=%s)…", force_reembed)
+    raw_docs = load_documents_from_folder(DOCS_DIR)
+    if not raw_docs:
         logger.warning("No documents found during rebuild")
         return
+
+    docs = await _contextualize_chunks(raw_docs)
     loop = asyncio.get_event_loop()
-    embs = await loop.run_in_executor(None, _compute_doc_embeddings, docs)
+
+    cached = None if force_reembed else _load_emb_cache(docs)
+    if cached is not None:
+        embs = cached
+    else:
+        embs = await loop.run_in_executor(None, _compute_doc_embeddings, docs)
+        _save_emb_cache(docs, embs)
+
     await loop.run_in_executor(None, _init_bm25, docs)
     KNOWLEDGE_BASE = docs
     doc_embeddings = embs
-    logger.info("Index rebuild complete — %d chunks", len(KNOWLEDGE_BASE))
+    logger.info("Index rebuild complete — %d chunks (cached=%s)", len(KNOWLEDGE_BASE), cached is not None)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

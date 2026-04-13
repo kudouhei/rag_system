@@ -96,6 +96,43 @@ const I18N = {
     convEmpty:          "暂无对话记录。开启「对话模式」后，每次问答将自动保存在此。",
     role_user:          "YOU",
     role_asst:          "ASSISTANT",
+    // Knowledge Base stats
+    kbTitle:            "知识库状态",
+    kbChunks:           "个分块",
+    kbDocs:             "个文档",
+    kbWords:            "词",
+    kbContextual:       "上下文增强",
+    kbStale:            "条文档可能过期（>90天）",
+    kbRebuilding:       "正在重建索引…",
+    kbRebuildBtn:       "重建索引",
+    kbForceBtn:         "强制重新嵌入",
+    kbSatRate:          (p) => `好评率 ${p}%`,
+    kbNoFeedback:       "暂无反馈",
+    kbLoading:          "加载知识库信息…",
+    kbFeedbackTotal:    (n) => `${n} 条反馈`,
+    // Answer feedback
+    feedbackTitle:      "这个回答有帮助吗？",
+    feedback_yes:       "有帮助",
+    feedback_no:        "没有帮助",
+    feedback_thanks:    "感谢你的反馈！",
+    feedback_comment:   "添加备注（可选）",
+    // Docs tab
+    tab_docs:           "文档",
+    docsUploadTitle:    "上传文档",
+    docsDropHint:       "将文件拖放到此处，或点击选择文件",
+    docsDropActive:     "松开以添加文件",
+    docsAllowedTypes:   "支持：.txt  .md  .pdf  （可多选）",
+    docsUploadBtn:      (n) => `上传 ${n} 个文件`,
+    docsUploading:      "上传中…",
+    docsUploadDone:     (ok, err) => `完成：${ok} 成功${err>0?`，${err} 失败`:""}`,
+    docsCurrentTitle:   "当前文档",
+    docsEmpty:          "知识库中暂无文档",
+    docsChunks:         (n) => `${n} 块`,
+    docsWords:          (n) => `~${n} 词`,
+    docsDeleteBtn:      "删除",
+    docsDeleteConfirm:  (f) => `确认删除「${f}」？删除后将重建索引。`,
+    docsDeleting:       "删除中…",
+    docsRebuildNotice:  "上传/删除后将自动重建索引，请稍等",
     sampleQueries: [
       "企业知识库如何实现高效检索？",
       "HyDE 假设文档嵌入的原理是什么？",
@@ -188,6 +225,43 @@ const I18N = {
     convEmpty:          "No conversation yet. Enable Chat Mode to save Q&A pairs here.",
     role_user:          "YOU",
     role_asst:          "ASSISTANT",
+    // Knowledge Base stats
+    kbTitle:            "Knowledge Base",
+    kbChunks:           "chunks",
+    kbDocs:             "sources",
+    kbWords:            "words",
+    kbContextual:       "Contextual",
+    kbStale:            "source(s) may be stale (>90 days)",
+    kbRebuilding:       "Rebuilding index…",
+    kbRebuildBtn:       "Rebuild Index",
+    kbForceBtn:         "Force Re-embed",
+    kbSatRate:          (p) => `${p}% satisfied`,
+    kbNoFeedback:       "No feedback yet",
+    kbLoading:          "Loading knowledge base…",
+    kbFeedbackTotal:    (n) => `${n} feedback(s)`,
+    // Answer feedback
+    feedbackTitle:      "Was this answer helpful?",
+    feedback_yes:       "Helpful",
+    feedback_no:        "Not helpful",
+    feedback_thanks:    "Thanks for your feedback!",
+    feedback_comment:   "Add a comment (optional)",
+    // Docs tab
+    tab_docs:           "Docs",
+    docsUploadTitle:    "Upload Documents",
+    docsDropHint:       "Drop files here, or click to browse",
+    docsDropActive:     "Release to add files",
+    docsAllowedTypes:   "Supported: .txt  .md  .pdf  (multi-select allowed)",
+    docsUploadBtn:      (n) => `Upload ${n} file${n!==1?"s":""}`,
+    docsUploading:      "Uploading…",
+    docsUploadDone:     (ok, err) => `Done: ${ok} uploaded${err>0?`, ${err} failed`:""}`,
+    docsCurrentTitle:   "Knowledge Base Documents",
+    docsEmpty:          "No documents in the knowledge base yet",
+    docsChunks:         (n) => `${n} chunks`,
+    docsWords:          (n) => `~${n} words`,
+    docsDeleteBtn:      "Delete",
+    docsDeleteConfirm:  (f) => `Delete "${f}"? The index will be rebuilt.`,
+    docsDeleting:       "Deleting…",
+    docsRebuildNotice:  "Index rebuilds automatically after upload or delete",
     sampleQueries: [
       "How to implement efficient enterprise knowledge retrieval?",
       "What is the HyDE hypothetical document embedding technique?",
@@ -336,8 +410,19 @@ const DocCard = ({ doc, rank, lang }) => (
     </div>
     <p style={{fontSize:12, color:C.textMid, margin:"0 0 8px", lineHeight:1.6}}>{doc.content}</p>
     {doc.source && (
-      <div style={{fontSize:10, color:C.textDim, marginBottom:6, display:"flex", alignItems:"center", gap:4}}>
+      <div style={{fontSize:10, color:C.textDim, marginBottom:6, display:"flex", alignItems:"center", gap:6, flexWrap:"wrap"}}>
         <span>📁</span><span style={{fontFamily:"monospace"}}>{doc.source}</span>
+        {doc.file_mtime && (
+          <span style={{color:C.textDim}}>
+            · {new Date(doc.file_mtime).toLocaleDateString()}
+          </span>
+        )}
+        {doc.context_added && (
+          <span style={{
+            fontSize:9, padding:"1px 5px", borderRadius:3,
+            background:`${C.teal}15`, color:C.teal, border:`1px solid ${C.teal}33`,
+          }}>✦ contextual</span>
+        )}
       </div>
     )}
     <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:8}}>
@@ -505,6 +590,262 @@ const ConversationPanel = ({ history, onClear, lang }) => {
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
+// Docs Tab  —  Upload + Knowledge Base Document Management
+// ══════════════════════════════════════════════════════════════════════════════
+const ALLOWED_EXTS = [".txt", ".md", ".pdf"];
+
+const DocsTab = ({ lang, kbStats, onRefresh }) => {
+  const [pendingFiles, setPendingFiles] = useState([]);   // File objects waiting to upload
+  const [fileStatuses, setFileStatuses] = useState({});   // filename -> "ok"|"error"|"uploading"
+  const [uploading,    setUploading]    = useState(false);
+  const [uploadMsg,    setUploadMsg]    = useState("");    // summary after upload
+  const [isDragging,   setIsDragging]   = useState(false);
+  const [deletingFile, setDeletingFile] = useState(null); // filename being deleted
+  const inputRef = useRef(null);
+
+  const addFiles = (rawFiles) => {
+    const valid = Array.from(rawFiles).filter(f =>
+      ALLOWED_EXTS.some(ext => f.name.toLowerCase().endsWith(ext))
+    );
+    setPendingFiles(prev => {
+      const existing = new Set(prev.map(f => f.name));
+      return [...prev, ...valid.filter(f => !existing.has(f.name))];
+    });
+  };
+
+  const removeFile = (name) =>
+    setPendingFiles(prev => prev.filter(f => f.name !== name));
+
+  const onDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
+  const onDragLeave = ()  => setIsDragging(false);
+  const onDrop = (e)      => { e.preventDefault(); setIsDragging(false); addFiles(e.dataTransfer.files); };
+
+  const uploadAll = async () => {
+    if (!pendingFiles.length || uploading) return;
+    setUploading(true);
+    setUploadMsg("");
+    // Mark all as uploading
+    const st = {};
+    pendingFiles.forEach(f => { st[f.name] = "uploading"; });
+    setFileStatuses(st);
+
+    try {
+      const formData = new FormData();
+      pendingFiles.forEach(f => formData.append("files", f));
+      const res  = await fetch("http://localhost:8000/upload", { method: "POST", body: formData });
+      const data = await res.json();
+      const newSt = {};
+      data.files.forEach(r => { newSt[r.filename] = r.status; });
+      setFileStatuses(newSt);
+      setUploadMsg(tL(lang, "docsUploadDone", data.uploaded, data.errors));
+      if (data.uploaded > 0) {
+        // Wait 3s for backend rebuild, then refresh stats
+        setTimeout(() => { onRefresh(); setPendingFiles([]); setFileStatuses({}); setUploadMsg(""); }, 3500);
+      }
+    } catch {
+      const errSt = {};
+      pendingFiles.forEach(f => { errSt[f.name] = "error"; });
+      setFileStatuses(errSt);
+      setUploadMsg("Upload failed — is the backend running?");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const deleteDoc = async (filename) => {
+    if (!window.confirm(tL(lang, "docsDeleteConfirm", filename))) return;
+    setDeletingFile(filename);
+    try {
+      await fetch(`http://localhost:8000/docs/${encodeURIComponent(filename)}`, { method: "DELETE" });
+      setTimeout(() => { onRefresh(); setDeletingFile(null); }, 3500);
+    } catch {
+      setDeletingFile(null);
+    }
+  };
+
+  const fmtSize = (bytes) =>
+    bytes >= 1024*1024 ? `${(bytes/1024/1024).toFixed(1)} MB`
+    : bytes >= 1024    ? `${(bytes/1024).toFixed(1)} KB`
+    : `${bytes} B`;
+
+  const statusIcon = (name) => {
+    const s = fileStatuses[name];
+    if (s === "ok")        return <span style={{color:C.green,  fontSize:13}}>✓</span>;
+    if (s === "error")     return <span style={{color:C.red,    fontSize:13}}>✗</span>;
+    if (s === "uploading") return <Spinner size={12} color={C.accent}/>;
+    return null;
+  };
+
+  return (
+    <div style={{display:"flex", flexDirection:"column", gap:16}}>
+
+      {/* ── Upload Zone ── */}
+      <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:10, padding:16}}>
+        <div style={{fontSize:11, color:C.textMid, fontWeight:700, letterSpacing:"0.08em", marginBottom:12}}>
+          {tL(lang,"docsUploadTitle")}
+        </div>
+
+        {/* Drop area */}
+        <div
+          onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}
+          onClick={()=>inputRef.current?.click()}
+          style={{
+            border:`2px dashed ${isDragging ? C.accent : C.borderBright}`,
+            borderRadius:8, padding:"28px 16px", textAlign:"center", cursor:"pointer",
+            background: isDragging ? `${C.accent}08` : C.bg,
+            transition:"all 0.2s", marginBottom:12,
+          }}
+        >
+          <div style={{fontSize:28, marginBottom:8}}>📂</div>
+          <div style={{fontSize:13, color:isDragging?C.accent:C.textMid, fontWeight:600}}>
+            {isDragging ? tL(lang,"docsDropActive") : tL(lang,"docsDropHint")}
+          </div>
+          <div style={{fontSize:11, color:C.textDim, marginTop:4}}>
+            {tL(lang,"docsAllowedTypes")}
+          </div>
+          <input
+            ref={inputRef} type="file" multiple accept=".txt,.md,.pdf"
+            style={{display:"none"}}
+            onChange={e => { addFiles(e.target.files); e.target.value=""; }}
+          />
+        </div>
+
+        {/* Pending file list */}
+        {pendingFiles.length > 0 && (
+          <div style={{marginBottom:12}}>
+            {pendingFiles.map(f => (
+              <div key={f.name} style={{
+                display:"flex", alignItems:"center", gap:8,
+                padding:"5px 8px", borderRadius:5, marginBottom:4,
+                background:C.surface, border:`1px solid ${C.border}`, fontSize:12,
+              }}>
+                <span style={{flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", color:C.text}}>
+                  📄 {f.name}
+                </span>
+                <span style={{color:C.textDim, flexShrink:0, fontSize:11}}>{fmtSize(f.size)}</span>
+                {statusIcon(f.name)}
+                {!uploading && !fileStatuses[f.name] && (
+                  <button onClick={(e)=>{e.stopPropagation();removeFile(f.name);}} style={{
+                    background:"transparent", border:"none", color:C.red,
+                    cursor:"pointer", fontSize:14, padding:"0 2px", lineHeight:1,
+                  }}>×</button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Upload result message */}
+        {uploadMsg && (
+          <div style={{
+            fontSize:12, color:C.green, background:`${C.green}10`,
+            border:`1px solid ${C.green}33`, borderRadius:5, padding:"6px 10px", marginBottom:10,
+          }}>
+            ✓ {uploadMsg} — <span style={{color:C.textDim}}>{tL(lang,"docsRebuildNotice")}</span>
+          </div>
+        )}
+
+        {/* Upload button */}
+        <button
+          onClick={uploadAll}
+          disabled={!pendingFiles.length || uploading}
+          style={{
+            width:"100%", padding:"10px", borderRadius:7, fontSize:13, fontWeight:700,
+            cursor: (!pendingFiles.length || uploading) ? "not-allowed" : "pointer",
+            background: (!pendingFiles.length || uploading)
+              ? `${C.accent}18`
+              : `linear-gradient(135deg,${C.accentDim},${C.accent})`,
+            color: (!pendingFiles.length || uploading) ? C.accentDim : "#fff",
+            border:"none", fontFamily:"inherit",
+            display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+          }}
+        >
+          {uploading
+            ? <><Spinner size={13} color={C.accent}/>{tL(lang,"docsUploading")}</>
+            : tL(lang, "docsUploadBtn", pendingFiles.length || 0)
+          }
+        </button>
+      </div>
+
+      {/* ── Document List ── */}
+      <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:10, padding:16}}>
+        <div style={{fontSize:11, color:C.textMid, fontWeight:700, letterSpacing:"0.08em", marginBottom:12}}>
+          {tL(lang,"docsCurrentTitle")}
+          {kbStats && (
+            <span style={{fontWeight:400, marginLeft:8, color:C.textDim}}>
+              ({kbStats.total_chunks} {tL(lang,"kbChunks")} · {kbStats.total_sources} {tL(lang,"kbDocs")})
+            </span>
+          )}
+        </div>
+
+        {!kbStats || kbStats.sources?.length === 0 ? (
+          <div style={{textAlign:"center", padding:"24px 0", color:C.textDim, fontSize:13}}>
+            {tL(lang,"docsEmpty")}
+          </div>
+        ) : (
+          <div>
+            {kbStats.sources.map((src, i) => {
+              const isStale   = kbStats.stale_sources?.includes(src.source);
+              const isDeleting = deletingFile === src.source;
+              return (
+                <div key={i} style={{
+                  display:"flex", alignItems:"center", gap:8,
+                  padding:"9px 10px", borderRadius:7, marginBottom:6,
+                  background: isStale ? `${C.orange}08` : C.bg,
+                  border:`1px solid ${isStale ? C.orange+"44" : C.border}`,
+                }}>
+                  {/* Icon */}
+                  <span style={{fontSize:16, flexShrink:0}}>
+                    {src.source.endsWith(".pdf") ? "📕"
+                     : src.source.endsWith(".md") ? "📝" : "📄"}
+                  </span>
+
+                  {/* Info */}
+                  <div style={{flex:1, minWidth:0}}>
+                    <div style={{
+                      fontSize:12, fontWeight:600, color:C.text,
+                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                    }} title={src.source}>{src.source}</div>
+                    <div style={{fontSize:11, color:C.textDim, marginTop:2, display:"flex", gap:8}}>
+                      <span>{tL(lang,"docsChunks", src.chunks)}</span>
+                      <span>{tL(lang,"docsWords",  src.words)}</span>
+                      {src.file_size_kb && <span>{src.file_size_kb} KB</span>}
+                      {isStale && (
+                        <span style={{color:C.orange}}>⚠ stale</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Delete button */}
+                  <button
+                    onClick={() => deleteDoc(src.source)}
+                    disabled={isDeleting}
+                    style={{
+                      flexShrink:0, padding:"3px 9px", borderRadius:4,
+                      fontSize:11, cursor: isDeleting ? "not-allowed" : "pointer",
+                      background:"transparent", color: isDeleting ? C.textDim : C.red,
+                      border:`1px solid ${isDeleting ? C.border : C.red+"44"}`,
+                      fontFamily:"inherit",
+                    }}
+                  >
+                    {isDeleting ? tL(lang,"docsDeleting") : tL(lang,"docsDeleteBtn")}
+                  </button>
+                </div>
+              );
+            })}
+
+            {/* Rebuild notice */}
+            <div style={{fontSize:11, color:C.textDim, marginTop:8, textAlign:"center"}}>
+              ℹ {tL(lang,"docsRebuildNotice")}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
 // Main App
 // ══════════════════════════════════════════════════════════════════════════════
 export default function RAGDashboard() {
@@ -530,9 +871,59 @@ export default function RAGDashboard() {
   const [conversationHistory, setConversationHistory] = useState([]);
   const [activeTab, setActiveTab]         = useState("process");
 
+  // Knowledge Base stats
+  const [kbStats, setKbStats]             = useState(null);
+  const [kbLoading, setKbLoading]         = useState(false);
+  const [kbRebuilding, setKbRebuilding]   = useState(false);
+
+  // Answer feedback
+  const [feedbackGiven, setFeedbackGiven] = useState(null);   // "pos" | "neg" | null
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackComment, setFeedbackComment] = useState("");
+
   const wsRef             = useRef(null);
   const logsEndRef        = useRef(null);
   const submittedQueryRef = useRef("");
+
+  // Fetch KB stats on mount and after index rebuild
+  const fetchKbStats = useCallback(async () => {
+    try {
+      const res = await fetch("http://localhost:8000/stats");
+      if (res.ok) setKbStats(await res.json());
+    } catch { /* backend not running yet */ }
+  }, []);
+
+  useEffect(() => { fetchKbStats(); }, [fetchKbStats]);
+
+  const triggerRebuild = useCallback(async (force = false) => {
+    setKbRebuilding(true);
+    try {
+      await fetch(`http://localhost:8000/reload?force=${force}`, { method:"POST" });
+      // Poll until rebuild finishes (simple approach: wait 3s then refetch)
+      setTimeout(() => { setKbRebuilding(false); fetchKbStats(); }, 4000);
+    } catch { setKbRebuilding(false); }
+  }, [fetchKbStats]);
+
+  // Submit answer feedback
+  const submitFeedback = useCallback(async (rating) => {
+    if (feedbackGiven || feedbackLoading) return;
+    setFeedbackLoading(true);
+    try {
+      await fetch("http://localhost:8000/feedback", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+          query:    submittedQueryRef.current,
+          answer,
+          rating,
+          comment:  feedbackComment || null,
+          doc_ids:  docs.map(d=>d.id),
+          language: lang,
+        }),
+      });
+      setFeedbackGiven(rating > 0 ? "pos" : "neg");
+    } finally { setFeedbackLoading(false); }
+  }, [feedbackGiven, feedbackLoading, answer, docs, lang, feedbackComment]);
 
   useEffect(()=>{
     if (logsEndRef.current && activeTab==="process")
@@ -571,6 +962,7 @@ export default function RAGDashboard() {
     setStatus("running"); setLogs([]); setDocs([]); setAnswer("");
     setMetrics(null); setIterations([]); setElapsed(null);
     setHydeDoc(""); setActiveTab("process");
+    setFeedbackGiven(null); setFeedbackComment("");
 
     const ws=new WebSocket("ws://localhost:8000/ws/query");
     wsRef.current=ws;
@@ -598,10 +990,11 @@ export default function RAGDashboard() {
     {key:"adaptive"},{key:"hybrid"},{key:"vector"},{key:"bm25"},
   ];
   const TABS=[
-    {key:"process",  lk:"tab_process", icon:"⚙"},
-    {key:"results",  lk:"tab_results", icon:"📋"},
-    {key:"metrics",  lk:"tab_metrics", icon:"📊"},
-    {key:"conversation", lk:"tab_conv", icon:"💬"},
+    {key:"process",      lk:"tab_process", icon:"⚙"},
+    {key:"results",      lk:"tab_results", icon:"📋"},
+    {key:"metrics",      lk:"tab_metrics", icon:"📊"},
+    {key:"conversation", lk:"tab_conv",    icon:"💬"},
+    {key:"docs",         lk:"tab_docs",    icon:"📁"},
   ];
 
   const ToggleBtn=({labelKey, val, onToggle, color, tipKey})=>(
@@ -769,7 +1162,7 @@ export default function RAGDashboard() {
             {status==="running"?<><Spinner size={14} color={C.accent}/>{t("runningBtn")}</>:t("runBtn")}
           </button>
 
-          {/* Stats */}
+          {/* Query Stats */}
           {status==="done" && elapsed && (
             <div style={{background:C.surface, border:`1px solid ${C.green}44`, borderRadius:8, padding:12}}>
               <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, textAlign:"center"}}>
@@ -786,6 +1179,119 @@ export default function RAGDashboard() {
               </div>
             </div>
           )}
+
+          {/* Knowledge Base Stats Panel */}
+          <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:10, padding:14}}>
+            <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10}}>
+              <span style={{fontSize:10, color:C.textMid, fontWeight:700, letterSpacing:"0.1em"}}>
+                {t("kbTitle")}
+              </span>
+              <button onClick={()=>fetchKbStats()} style={{
+                fontSize:10, color:C.accent, background:"transparent",
+                border:`1px solid ${C.accent}33`, borderRadius:4, padding:"2px 7px", cursor:"pointer",
+              }}>↻</button>
+            </div>
+
+            {!kbStats ? (
+              <div style={{fontSize:11, color:C.textDim, textAlign:"center", padding:"8px 0"}}>
+                {t("kbLoading")}
+              </div>
+            ) : (
+              <>
+                {/* Main numbers */}
+                <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6, textAlign:"center", marginBottom:10}}>
+                  {[
+                    {value: kbStats.total_chunks, label: t("kbChunks"), color: C.accent},
+                    {value: kbStats.total_sources, label: t("kbDocs"), color: C.green},
+                    {value: kbStats.total_words >= 1000
+                        ? `${(kbStats.total_words/1000).toFixed(1)}k`
+                        : kbStats.total_words,
+                      label: t("kbWords"), color: C.purple},
+                  ].map((s,i)=>(
+                    <div key={i} style={{background:C.bg, borderRadius:6, padding:"6px 4px", border:`1px solid ${C.border}`}}>
+                      <div style={{fontSize:15, fontWeight:800, color:s.color}}>{s.value}</div>
+                      <div style={{fontSize:9, color:C.textDim}}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Per-source list */}
+                {kbStats.sources?.length > 0 && (
+                  <div style={{maxHeight:120, overflowY:"auto", marginBottom:8}}>
+                    {kbStats.sources.map((src,i)=>(
+                      <div key={i} style={{
+                        display:"flex", justifyContent:"space-between", alignItems:"center",
+                        padding:"3px 0", borderBottom:`1px solid ${C.border}`, fontSize:11,
+                      }}>
+                        <span style={{
+                          color: kbStats.stale_sources?.includes(src.source) ? C.orange : C.textMid,
+                          fontFamily:"monospace", fontSize:10,
+                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:180,
+                        }} title={src.source}>
+                          {kbStats.stale_sources?.includes(src.source) ? "⚠ " : "📄 "}{src.source}
+                        </span>
+                        <span style={{color:C.textDim, fontSize:10, flexShrink:0}}>{src.chunks}×</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Stale warning */}
+                {kbStats.stale_sources?.length > 0 && (
+                  <div style={{
+                    fontSize:10, color:C.orange, background:`${C.orange}10`,
+                    border:`1px solid ${C.orange}33`, borderRadius:4, padding:"4px 8px", marginBottom:8,
+                  }}>
+                    ⚠ {kbStats.stale_sources.length} {t("kbStale")}
+                  </div>
+                )}
+
+                {/* Contextual chunking badge */}
+                {kbStats.contextual_chunking && (
+                  <div style={{
+                    display:"inline-flex", alignItems:"center", gap:4,
+                    fontSize:10, color:C.teal, background:`${C.teal}10`,
+                    border:`1px solid ${C.teal}33`, borderRadius:4, padding:"2px 7px", marginBottom:8,
+                  }}>
+                    ✦ {t("kbContextual")}
+                  </div>
+                )}
+
+                {/* Feedback summary */}
+                {kbStats.feedback?.total > 0 ? (
+                  <div style={{fontSize:11, color:C.textMid, display:"flex", alignItems:"center", gap:6}}>
+                    <span>{t("kbFeedbackTotal", kbStats.feedback.total)}</span>
+                    {kbStats.feedback.satisfaction_rate != null && (
+                      <Tag
+                        label={t("kbSatRate", (kbStats.feedback.satisfaction_rate*100).toFixed(0))}
+                        color={kbStats.feedback.satisfaction_rate>=0.7?C.green:C.orange}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <div style={{fontSize:11, color:C.textDim}}>{t("kbNoFeedback")}</div>
+                )}
+
+                {/* Rebuild buttons */}
+                <div style={{display:"flex", gap:6, marginTop:10}}>
+                  <button onClick={()=>triggerRebuild(false)} disabled={kbRebuilding} style={{
+                    flex:1, fontSize:10, padding:"4px 0", borderRadius:4, cursor:"pointer",
+                    background:`${C.accent}12`, color:C.accent,
+                    border:`1px solid ${C.accent}33`, fontFamily:"inherit",
+                  }}>
+                    {kbRebuilding ? t("kbRebuilding") : t("kbRebuildBtn")}
+                  </button>
+                  <button onClick={()=>triggerRebuild(true)} disabled={kbRebuilding} title={lang==="en"?"Re-compute all embeddings ignoring cache":"强制重新计算所有嵌入，忽略缓存"} style={{
+                    fontSize:10, padding:"4px 8px", borderRadius:4, cursor:"pointer",
+                    background:"transparent", color:C.textDim,
+                    border:`1px solid ${C.border}`, fontFamily:"inherit",
+                  }}>
+                    {t("kbForceBtn")}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {/* ══ RIGHT PANEL ══ */}
@@ -850,6 +1356,45 @@ export default function RAGDashboard() {
                       {answer}
                       {status==="running"&&<span style={{animation:"pulse 0.8s infinite",display:"inline-block"}}>▌</span>}
                     </p>
+
+                    {/* ⑨ Answer Feedback */}
+                    {status==="done" && (
+                      <div style={{
+                        marginTop:14, paddingTop:12,
+                        borderTop:`1px solid ${C.border}`,
+                        display:"flex", alignItems:"center", gap:10, flexWrap:"wrap",
+                      }}>
+                        {feedbackGiven ? (
+                          <span style={{fontSize:12, color:C.green, fontWeight:600}}>
+                            {feedbackGiven==="pos" ? "👍 " : "👎 "}{t("feedback_thanks")}
+                          </span>
+                        ) : (
+                          <>
+                            <span style={{fontSize:11, color:C.textMid}}>{t("feedbackTitle")}</span>
+                            <button onClick={()=>submitFeedback(1)} disabled={feedbackLoading} style={{
+                              padding:"4px 12px", borderRadius:20, fontSize:11, cursor:"pointer",
+                              background:`${C.green}12`, color:C.green,
+                              border:`1px solid ${C.green}44`, fontFamily:"inherit",
+                            }}>👍 {t("feedback_yes")}</button>
+                            <button onClick={()=>submitFeedback(-1)} disabled={feedbackLoading} style={{
+                              padding:"4px 12px", borderRadius:20, fontSize:11, cursor:"pointer",
+                              background:`${C.red}10`, color:C.red,
+                              border:`1px solid ${C.red}33`, fontFamily:"inherit",
+                            }}>👎 {t("feedback_no")}</button>
+                            <input
+                              value={feedbackComment}
+                              onChange={e=>setFeedbackComment(e.target.value)}
+                              placeholder={t("feedback_comment")}
+                              style={{
+                                flex:1, minWidth:120, fontSize:11, padding:"4px 8px",
+                                border:`1px solid ${C.border}`, borderRadius:4,
+                                background:C.bg, color:C.text, fontFamily:"inherit",
+                              }}
+                            />
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -954,6 +1499,11 @@ export default function RAGDashboard() {
           {/* ── Conversation Tab ── */}
           {activeTab==="conversation" && (
             <ConversationPanel history={conversationHistory} onClear={()=>setConversationHistory([])} lang={lang}/>
+          )}
+
+          {/* ── Docs Tab ── */}
+          {activeTab==="docs" && (
+            <DocsTab lang={lang} kbStats={kbStats} onRefresh={fetchKbStats}/>
           )}
         </div>
       </div>
