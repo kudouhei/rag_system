@@ -1,17 +1,23 @@
 """
 Adaptive RAG System — Backend
 ==============================
-Implemented Techniques
-──────────────────────
-  ① Iterative Retrieval + ReAct-style Reflection   Yao et al., 2022
-  ② Hybrid Dense-Sparse Retrieval  (BGE + BM25)
+Research Techniques
+───────────────────
+  ① Iterative Retrieval + ReAct-style Reflection   Yao et al., NeurIPS 2022
+  ② Hybrid Dense-Sparse Retrieval  (BGE + BM25 + jieba)
   ③ HyDE – Hypothetical Document Embeddings        Gao et al., EMNLP 2022
   ④ Cross-Encoder Reranking                        BAAI/bge-reranker series
-  ⑤ RAGAS-style Evaluation Framework               Es et al., 2023
-  ⑥ Multi-turn Conversation Memory
-  ⑦ Contextual Chunking                            Anthropic, 2024
-  ⑧ Embedding Cache (incremental indexing)
-  ⑨ User Feedback Loop + Satisfaction Analytics
+  ⑤ RAGAS-style Evaluation Framework               Es et al., arXiv 2023
+  ⑥ Contextual Chunking                            Anthropic, 2024
+  ⑦ GraphRAG — Knowledge Graph-enhanced Retrieval
+
+Engineering Features
+────────────────────
+  • Multi-turn Conversation Memory (last-6-turn context window)
+  • Embedding Cache with SHA-256 fingerprinting (incremental indexing)
+  • Agentic Pipeline: LLM router → direct / RAG / realtime-tools / complex
+  • MCP Server integration (stdio + HTTP)
+  • WebSocket streaming with per-phase event protocol
 
 Privacy & Compliance
 ────────────────────
@@ -156,8 +162,6 @@ CONTEXTUAL_CHUNKING  = os.getenv("CONTEXTUAL_CHUNKING", "false").lower() == "tru
 CACHE_DIR            = Path(os.getenv("CACHE_DIR", Path(__file__).parent / "cache"))
 # ⑩ Knowledge Graph (GraphRAG)
 ENABLE_GRAPH         = os.getenv("ENABLE_GRAPH", "true").lower() == "true"
-# Feedback log
-FEEDBACK_FILE        = Path(__file__).parent / "feedback.jsonl"
 
 # ── Global state ──────────────────────────────────────────────────────────────
 
@@ -1278,18 +1282,6 @@ async def get_stats():
             if src and src not in stale_sources:
                 stale_sources.append(src)
 
-    # Feedback analytics
-    feedback_total, feedback_pos = 0, 0
-    if FEEDBACK_FILE.exists():
-        for line in FEEDBACK_FILE.read_text(encoding="utf-8").splitlines():
-            try:
-                r = json.loads(line)
-                feedback_total += 1
-                if r.get("rating", 0) > 0:
-                    feedback_pos += 1
-            except Exception:
-                pass
-
     return {
         "total_chunks":          len(KNOWLEDGE_BASE),
         "total_sources":         len(sources),
@@ -1297,47 +1289,7 @@ async def get_stats():
         "contextual_chunking":   CONTEXTUAL_CHUNKING,
         "sources": sorted(sources.values(), key=lambda x: x["source"]),
         "stale_sources":         stale_sources,      # not updated in 90+ days
-        "feedback": {
-            "total":            feedback_total,
-            "positive":         feedback_pos,
-            "negative":         feedback_total - feedback_pos,
-            "satisfaction_rate": round(feedback_pos / feedback_total, 2)
-                                 if feedback_total > 0 else None,
-        },
     }
-
-
-# ── ⑨ User Feedback Loop ──────────────────────────────────────────────────────
-
-class FeedbackRequest(BaseModel):
-    query:    str
-    answer:   str
-    rating:   int               # +1 = helpful, -1 = not helpful
-    comment:  Optional[str] = None
-    doc_ids:  List[str]    = []
-    language: str          = "zh"
-
-
-@app.post("/feedback")
-async def submit_feedback(req: FeedbackRequest):
-    """
-    Persist user feedback to a JSONL log.
-    Used for offline analysis: identify low-quality documents, coverage gaps,
-    and hallucination patterns.
-    """
-    record = {
-        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
-        "query":     req.query,
-        "answer":    req.answer[:500],     # truncate to avoid bloat
-        "rating":    req.rating,
-        "comment":   req.comment,
-        "doc_ids":   req.doc_ids,
-        "language":  req.language,
-    }
-    with open(FEEDBACK_FILE, "a", encoding="utf-8") as f:
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
-    logger.info("Feedback recorded: rating=%+d, query=%r", req.rating, req.query[:60])
-    return {"status": "ok", "message": "Thank you for your feedback!"}
 
 
 @app.get("/graph")

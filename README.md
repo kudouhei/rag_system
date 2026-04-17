@@ -63,7 +63,8 @@
 | ③ | **Hybrid Dense-Sparse Fusion** (BGE + BM25) | — | +3% recall |
 | ④ | **Cross-Encoder Reranking** (BAAI/bge-reranker) | — | +2% recall |
 | ⑤ | **RAGAS Evaluation Framework** | Es et al., arXiv 2023 | Automated QA quality metrics |
-| ⑥ | **Multi-turn Conversation Memory** | — | Context-aware QA |
+| ⑥ | **Contextual Chunking** | Anthropic, 2024 | Reduces out-of-context chunk problem |
+| ⑦ | **GraphRAG** — Knowledge Graph-enhanced Retrieval | — | Entity/relation-aware scoring |
 
 ### Privacy & Compliance
 - All document embeddings are computed **locally** — no text leaves the server
@@ -244,13 +245,15 @@ metrics = {
 
 ### REST Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET`  | `/health`    | Service status + model info |
-| `GET`  | `/docs_list` | All indexed documents |
-| `POST` | `/upload`    | Upload a document file (multipart/form-data) |
-| `POST` | `/reload`    | Rebuild index from docs folder |
-| `GET`  | `/docs`      | FastAPI auto-generated OpenAPI docs |
+| Method    | Path              | Description |
+|-----------|-------------------|-------------|
+| `GET`     | `/health`         | Service status + model info |
+| `GET`     | `/stats`          | Knowledge base analytics (chunks, sources, freshness) |
+| `GET`     | `/graph`          | Knowledge graph: top nodes / edges |
+| `GET`     | `/docs_list`      | All indexed document chunks |
+| `POST`    | `/upload`         | Upload documents (multipart/form-data, .txt/.md/.pdf) |
+| `DELETE`  | `/docs/{filename}`| Remove a document and rebuild index |
+| `POST`    | `/reload`         | Trigger index rebuild (optional `?force=true`) |
 
 **Upload example:**
 ```bash
@@ -342,23 +345,20 @@ See `mcp_config_example.json` at the project root for all configuration options.
 ```
 rag_system/
 ├── backend/
-│   ├── main.py              # FastAPI + WebSocket pipeline (HyDE, RAGAS, CE)
+│   ├── main.py              # FastAPI + WebSocket pipeline (all RAG techniques)
+│   ├── mcp_server.py        # FastMCP server — exposes KB as AI tool
 │   ├── requirements.txt     # Python dependencies
 │   ├── .env.example         # Configuration template
 │   └── docs/                # Knowledge base documents (.txt / .md / .pdf)
-│       ├── RAG系统技术概览.md
-│       ├── 迭代检索与反思机制.md
-│       ├── 交叉编码器重排序.md
-│       └── 企业知识库建设指南.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx          # Main UI (React + inline styles)
+│   │   ├── App.jsx          # React UI with streaming WebSocket client
 │   │   └── main.jsx         # Entry point
 │   ├── index.html
 │   ├── vite.config.js
 │   └── package.json
+├── mcp_config_example.json  # MCP client configs (Claude Desktop, Cursor, HTTP)
 ├── start.sh                 # One-command launcher
-├── .gitignore
 └── README.md
 ```
 
