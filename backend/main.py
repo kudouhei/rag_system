@@ -154,6 +154,8 @@ MAX_CHUNK_CHARS      = int(os.getenv("MAX_CHUNK_CHARS", "600"))
 CONTEXTUAL_CHUNKING  = os.getenv("CONTEXTUAL_CHUNKING", "false").lower() == "true"
 # ⑧ Embedding cache directory
 CACHE_DIR            = Path(os.getenv("CACHE_DIR", Path(__file__).parent / "cache"))
+# ⑩ Knowledge Graph (GraphRAG)
+ENABLE_GRAPH         = os.getenv("ENABLE_GRAPH", "true").lower() == "true"
 # Feedback log
 FEEDBACK_FILE        = Path(__file__).parent / "feedback.jsonl"
 
@@ -166,6 +168,7 @@ cross_encoder                        = None     # BAAI/bge-reranker (optional)
 bm25_index                           = None
 _tokenize_fn                         = None
 llm_client                           = None
+KNOWLEDGE_GRAPH: dict                = {"nodes": {}, "edges": {}}
 
 # ── FastAPI ───────────────────────────────────────────────────────────────────
 
@@ -374,6 +377,224 @@ def compute_bm25_scores(query: str) -> np.ndarray:
     scores = bm25_index.get_scores(tokens).astype(np.float32)
     mx = scores.max()
     return scores / mx if mx > 0 else scores
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ⑩ Knowledge Graph  (GraphRAG — graph-enhanced retrieval)
+# ══════════════════════════════════════════════════════════════════════════════
+
+_ZH_STOPWORDS = {
+    "的","是","在","了","和","与","或","但","如","从","到","为","以","及",
+    "其","这","那","有","无","一","不","也","都","将","中","上","下","我",
+    "你","他","她","它","们","对","所","把","被","让","使","由","按","等",
+}
+
+
+def _extract_keywords_as_entities(doc: dict) -> dict:
+    """Keyword-based entity extraction (fast, no LLM). Uses jieba if available."""
+    if _tokenize_fn is None:
+        return {"entities": [], "relations": []}
+    from collections import Counter
+    tokens = [
+        t for t in _tokenize_fn(doc["title"] + " " + doc["content"])
+        if len(t) > 1 and t not in _ZH_STOPWORDS and not t.isdigit()
+    ]
+    top_kw = [w for w, _ in Counter(tokens).most_common(7)]
+    return {"entities": [{"name": kw, "type": "keyword"} for kw in top_kw], "relations": []}
+
+
+async def _extract_entities_llm(doc: dict) -> dict:
+    """LLM-based entity + relation extraction for a single chunk."""
+    prompt = (
+        "从以下文本中提取关键实体和它们的关系。返回严格JSON（无多余文字）：\n"
+        '{"entities":[{"name":"实体名","type":"概念|技术|方法|系统|其他"}],'
+        '"relations":[{"source":"...","target":"...","relation":"..."}]}\n'
+        "要求：最多6个实体（名称≤8字），最多4条关系。\n\n文本：\n"
+    )
+    raw = await llm_call(
+        messages=[{"role": "user", "content": prompt + doc["content"][:600]}],
+        max_tokens=300, temperature=0.1,
+    )
+    if not raw:
+        return _extract_keywords_as_entities(doc)
+    try:
+        import re as _re
+        m = _re.search(r'\{.*\}', raw, _re.DOTALL)
+        if m:
+            d = json.loads(m.group())
+            return {"entities": d.get("entities", []), "relations": d.get("relations", [])}
+    except Exception:
+        pass
+    return _extract_keywords_as_entities(doc)
+
+
+def _graph_fingerprint(docs: List[dict]) -> str:
+    fp     = _doc_fingerprint(docs)
+    flavor = "llm" if llm_client else "kw"
+    return hashlib.sha256(f"{fp}|graph|{flavor}".encode()).hexdigest()[:20]
+
+
+def _load_graph_cache(docs: List[dict]) -> Optional[dict]:
+    cache_file = CACHE_DIR / f"graph_{_graph_fingerprint(docs)}.json"
+    if cache_file.exists():
+        logger.info("Graph cache hit — loading from %s", cache_file.name)
+        with open(cache_file, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return None
+
+
+def _save_graph_cache(graph: dict, docs: List[dict]) -> None:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    fp         = _graph_fingerprint(docs)
+    cache_file = CACHE_DIR / f"graph_{fp}.json"
+    with open(cache_file, "w", encoding="utf-8") as f:
+        json.dump(graph, f, ensure_ascii=False, indent=2)
+    for old in CACHE_DIR.glob("graph_*.json"):
+        if old != cache_file:
+            old.unlink(missing_ok=True)
+    logger.info("Graph cached: %d nodes, %d edges (%s)", len(graph["nodes"]), len(graph["edges"]), fp)
+
+
+async def _build_knowledge_graph(docs: List[dict]) -> dict:
+    """
+    Build knowledge graph from all document chunks.
+    • LLM available  → semantic entity + relation extraction
+    • LLM unavailable → jieba keyword co-occurrence graph
+    Edges are added for:
+      1. Explicit LLM-extracted relations
+      2. Co-occurrence within the same chunk (both modes)
+    """
+    graph: dict = {"nodes": {}, "edges": {}}
+    use_llm     = bool(llm_client)
+    logger.info("Building knowledge graph (%s mode, %d chunks)…", "LLM" if use_llm else "keyword", len(docs))
+
+    for i, doc in enumerate(docs):
+        chunk_id   = doc["id"]
+        extraction = await _extract_entities_llm(doc) if use_llm else _extract_keywords_as_entities(doc)
+
+        # Register nodes
+        chunk_ents: List[str] = []
+        for ent in extraction.get("entities", []):
+            name = ent.get("name", "").strip()
+            if not name or len(name) < 2:
+                continue
+            if name not in graph["nodes"]:
+                graph["nodes"][name] = {"type": ent.get("type", "other"), "chunk_ids": [], "freq": 0}
+            if chunk_id not in graph["nodes"][name]["chunk_ids"]:
+                graph["nodes"][name]["chunk_ids"].append(chunk_id)
+            graph["nodes"][name]["freq"] += 1
+            chunk_ents.append(name)
+
+        # Explicit LLM relations
+        for rel in extraction.get("relations", []):
+            src, tgt = rel.get("source", "").strip(), rel.get("target", "").strip()
+            if src in graph["nodes"] and tgt in graph["nodes"]:
+                key = f"{src}||{tgt}"
+                if key not in graph["edges"]:
+                    graph["edges"][key] = {"source": src, "target": tgt,
+                                           "relation": rel.get("relation", "related_to"), "weight": 1}
+                else:
+                    graph["edges"][key]["weight"] += 1
+
+        # Co-occurrence edges within the same chunk
+        for j in range(len(chunk_ents)):
+            for k in range(j + 1, len(chunk_ents)):
+                a, b = chunk_ents[j], chunk_ents[k]
+                key  = f"{a}||{b}"
+                if key not in graph["edges"]:
+                    graph["edges"][key] = {"source": a, "target": b, "relation": "co-occurs", "weight": 1}
+                else:
+                    graph["edges"][key]["weight"] += 1
+
+        if (i + 1) % 5 == 0 or (i + 1) == len(docs):
+            logger.info("  graph: %d/%d chunks, %d nodes, %d edges",
+                        i + 1, len(docs), len(graph["nodes"]), len(graph["edges"]))
+        await asyncio.sleep(0.01)
+
+    return graph
+
+
+async def _init_graph(docs: List[dict]) -> None:
+    global KNOWLEDGE_GRAPH
+    if not ENABLE_GRAPH:
+        logger.info("GraphRAG disabled (ENABLE_GRAPH=false)")
+        return
+    cached = _load_graph_cache(docs)
+    if cached is not None:
+        KNOWLEDGE_GRAPH = cached
+        return
+    KNOWLEDGE_GRAPH = await _build_knowledge_graph(docs)
+    _save_graph_cache(KNOWLEDGE_GRAPH, docs)
+    logger.info("✓ Knowledge graph ready: %d nodes, %d edges",
+                len(KNOWLEDGE_GRAPH["nodes"]), len(KNOWLEDGE_GRAPH["edges"]))
+
+
+def compute_graph_scores(query: str) -> np.ndarray:
+    """
+    Graph-based retrieval scores.
+    1. Match query tokens → graph nodes (direct match, weight 1.5)
+    2. Expand to 1-hop neighbours (weight 1.0)
+    3. Aggregate chunk scores, normalise to [0, 1]
+    Returns zeros if graph is empty or no nodes match.
+    """
+    scores = np.zeros(len(KNOWLEDGE_BASE), dtype=np.float32)
+    if not KNOWLEDGE_GRAPH["nodes"] or not KNOWLEDGE_BASE:
+        return scores
+
+    q_tokens = {t for t in (_tokenize_fn(query) if _tokenize_fn else query.split()) if len(t) > 1}
+
+    # Direct node matches
+    matched: set = set()
+    for node_name in KNOWLEDGE_GRAPH["nodes"]:
+        if node_name in query or any(t in node_name for t in q_tokens):
+            matched.add(node_name)
+
+    if not matched:
+        return scores
+
+    # 1-hop expansion
+    neighbours: set = set()
+    for edge in KNOWLEDGE_GRAPH["edges"].values():
+        if edge["source"] in matched:
+            neighbours.add(edge["target"])
+        if edge["target"] in matched:
+            neighbours.add(edge["source"])
+    neighbours -= matched
+
+    # Aggregate chunk scores
+    chunk_scores: dict = {}
+    for node_name, w in [(n, 1.5) for n in matched] + [(n, 1.0) for n in neighbours]:
+        for cid in KNOWLEDGE_GRAPH["nodes"].get(node_name, {}).get("chunk_ids", []):
+            chunk_scores[cid] = chunk_scores.get(cid, 0.0) + w
+
+    if not chunk_scores:
+        return scores
+
+    mx        = max(chunk_scores.values())
+    id_to_idx = {doc["id"]: i for i, doc in enumerate(KNOWLEDGE_BASE)}
+    for cid, s in chunk_scores.items():
+        if cid in id_to_idx:
+            scores[id_to_idx[cid]] = float(s) / mx
+
+    return scores
+
+
+def _fuse_scores(
+    emb_arr:    np.ndarray,
+    bm25_arr:   np.ndarray,
+    graph_arr:  np.ndarray,
+    strategy:   str,
+    use_graph:  bool,
+) -> np.ndarray:
+    """Central score fusion. When GraphRAG is active, shifts weights to accommodate graph lane."""
+    if strategy == "vector":
+        return emb_arr
+    if strategy == "bm25":
+        return bm25_arr
+    # hybrid / adaptive
+    if use_graph and graph_arr.any():
+        return (0.50 * emb_arr + 0.30 * bm25_arr + 0.20 * graph_arr).astype(np.float32)
+    return (0.60 * emb_arr + 0.40 * bm25_arr).astype(np.float32)
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Cross-Encoder Reranking  (optional — set RERANKER_MODEL env var)
@@ -723,8 +944,12 @@ async def _startup() -> None:
     await loop.run_in_executor(None, _init_cross_encoder)
 
     KNOWLEDGE_BASE = docs
-    logger.info("✓ RAG system ready — %d chunks indexed (contextual=%s, cached=%s)",
-                len(KNOWLEDGE_BASE), CONTEXTUAL_CHUNKING, cached is not None)
+    # ⑩ Knowledge Graph — must run after BM25 so _tokenize_fn is available
+    await _init_graph(docs)
+
+    logger.info("✓ RAG system ready — %d chunks indexed (contextual=%s, cached=%s, graph_nodes=%d)",
+                len(KNOWLEDGE_BASE), CONTEXTUAL_CHUNKING, cached is not None,
+                len(KNOWLEDGE_GRAPH["nodes"]))
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Request / Response Models
@@ -741,6 +966,7 @@ class QueryRequest(BaseModel):
     enable_iterative: bool = True
     enable_rerank: bool = True
     enable_hyde: bool = False           # HyDE (Gao et al., EMNLP 2022)
+    enable_graph: bool = False          # ⑩ GraphRAG knowledge-graph lane
     confidence_threshold: float = 0.55
     top_k: int = 5
     language: str = "zh"               # "zh" | "en"
@@ -803,9 +1029,11 @@ async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
             "enable_iterative": req.enable_iterative,
             "enable_rerank":    req.enable_rerank,
             "enable_hyde":      req.enable_hyde,
+            "enable_graph":     req.enable_graph,
             "threshold":        req.confidence_threshold,
             "total_docs":       len(KNOWLEDGE_BASE),
             "cross_encoder":    cross_encoder is not None,
+            "graph_nodes":      len(KNOWLEDGE_GRAPH["nodes"]),
             "language":         lang,
         },
     }))
@@ -842,21 +1070,26 @@ async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
 
         loop = asyncio.get_event_loop()
         # HyDE uses hypothetical_doc embedding only on first iteration
-        vec_text = retrieval_text if (req.enable_hyde and iteration == 1) else current_query
-        emb_scores   = await loop.run_in_executor(None, compute_embedding_scores, vec_text)
-        bm25_arr     = await loop.run_in_executor(None, compute_bm25_scores, current_query)
+        vec_text   = retrieval_text if (req.enable_hyde and iteration == 1) else current_query
+        emb_scores = await loop.run_in_executor(None, compute_embedding_scores, vec_text)
+        bm25_arr   = await loop.run_in_executor(None, compute_bm25_scores, current_query)
+        graph_arr  = (await loop.run_in_executor(None, compute_graph_scores, current_query)
+                      if req.enable_graph else np.zeros(len(KNOWLEDGE_BASE), dtype=np.float32))
+        final_arr  = _fuse_scores(emb_scores, bm25_arr, graph_arr, strategy, req.enable_graph)
 
         docs_scored = []
         for idx, doc in enumerate(KNOWLEDGE_BASE):
-            d   = doc.copy()
-            es  = float(emb_scores[idx])
-            bs  = float(bm25_arr[idx])
+            d  = doc.copy()
+            es = float(emb_scores[idx])
+            bs = float(bm25_arr[idx])
+            gs = float(graph_arr[idx])
             if strategy == "vector":
-                d.update(embedding_score=es, bm25_score=0.0, final_score=es)
+                d.update(embedding_score=es, bm25_score=0.0, graph_score=0.0, final_score=es)
             elif strategy == "bm25":
-                d.update(embedding_score=0.0, bm25_score=bs, final_score=bs)
-            else:   # hybrid
-                d.update(embedding_score=es, bm25_score=bs, final_score=es * 0.6 + bs * 0.4)
+                d.update(embedding_score=0.0, bm25_score=bs, graph_score=0.0, final_score=bs)
+            else:
+                d.update(embedding_score=es, bm25_score=bs, graph_score=gs,
+                         final_score=float(final_arr[idx]))
             d["strategy_used"] = strategy
             docs_scored.append(d)
 
@@ -868,8 +1101,10 @@ async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
                 "doc_id": doc["id"], "title": doc["title"],
                 "embedding_score": round(doc["embedding_score"], 3),
                 "bm25_score":      round(doc["bm25_score"], 3),
+                "graph_score":     round(doc.get("graph_score", 0.0), 3),
                 "final_score":     round(doc["final_score"], 3),
                 "strategy":        strategy,
+                "graph_active":    req.enable_graph,
             }))
             await asyncio.sleep(0.04)
 
@@ -962,6 +1197,7 @@ async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
             "tags":            d.get("tags", []),
             "embedding_score": round(d.get("embedding_score", 0.0), 3),
             "bm25_score":      round(d.get("bm25_score", 0.0), 3),
+            "graph_score":     round(d.get("graph_score", 0.0), 3),
             "final_score":     round(d.get("ce_score", d["final_score"]), 3),
             "strategy_used":   d.get("strategy_used", "hybrid"),
         }
@@ -1002,6 +1238,9 @@ async def health():
         "llm_model":            DEEPSEEK_MODEL if llm_client else None,
         "hyde_available":       llm_client is not None,
         "contextual_chunking":  CONTEXTUAL_CHUNKING,
+        "graph_enabled":        ENABLE_GRAPH,
+        "graph_nodes":          len(KNOWLEDGE_GRAPH["nodes"]),
+        "graph_edges":          len(KNOWLEDGE_GRAPH["edges"]),
         "embedding_cache_dir":  str(CACHE_DIR),
     }
 
@@ -1099,6 +1338,32 @@ async def submit_feedback(req: FeedbackRequest):
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
     logger.info("Feedback recorded: rating=%+d, query=%r", req.rating, req.query[:60])
     return {"status": "ok", "message": "Thank you for your feedback!"}
+
+
+@app.get("/graph")
+async def get_graph_info():
+    """Knowledge graph stats and top nodes/edges for visualisation."""
+    nodes = KNOWLEDGE_GRAPH.get("nodes", {})
+    edges = KNOWLEDGE_GRAPH.get("edges", {})
+
+    top_nodes = sorted(nodes.items(), key=lambda x: x[1].get("freq", 0), reverse=True)[:20]
+    top_edges = sorted(edges.values(), key=lambda x: x.get("weight", 0), reverse=True)[:20]
+
+    return {
+        "enabled":     ENABLE_GRAPH,
+        "node_count":  len(nodes),
+        "edge_count":  len(edges),
+        "top_nodes": [
+            {"name": n, "type": d.get("type"), "freq": d.get("freq", 0),
+             "chunk_count": len(d.get("chunk_ids", []))}
+            for n, d in top_nodes
+        ],
+        "top_edges": [
+            {"source": e["source"], "target": e["target"],
+             "relation": e.get("relation"), "weight": e.get("weight", 1)}
+            for e in top_edges
+        ],
+    }
 
 
 @app.get("/docs_list")
@@ -1207,7 +1472,9 @@ async def _rebuild_index(force_reembed: bool = False) -> None:
     await loop.run_in_executor(None, _init_bm25, docs)
     KNOWLEDGE_BASE = docs
     doc_embeddings = embs
-    logger.info("Index rebuild complete — %d chunks (cached=%s)", len(KNOWLEDGE_BASE), cached is not None)
+    await _init_graph(docs)
+    logger.info("Index rebuild complete — %d chunks (cached=%s, graph_nodes=%d)",
+                len(KNOWLEDGE_BASE), cached is not None, len(KNOWLEDGE_GRAPH["nodes"]))
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1582,6 +1849,7 @@ async def query_rag(
     enable_hyde: bool = False,
     enable_iterative: bool = True,
     enable_rerank: bool = True,
+    enable_graph: bool = False,
     top_k: int = 5,
     confidence_threshold: float = 0.55,
     language: str = "zh",
@@ -1609,21 +1877,26 @@ async def query_rag(
         if strat == "adaptive":
             strat = ["hybrid", "vector", "bm25"][min(iteration - 1, 2)]
 
-        vec_text  = retrieval_text if (enable_hyde and iteration == 1) else current_query
+        vec_text   = retrieval_text if (enable_hyde and iteration == 1) else current_query
         emb_scores = await loop.run_in_executor(None, compute_embedding_scores, vec_text)
         bm25_arr   = await loop.run_in_executor(None, compute_bm25_scores, current_query)
+        graph_arr  = (await loop.run_in_executor(None, compute_graph_scores, current_query)
+                      if enable_graph else np.zeros(len(KNOWLEDGE_BASE), dtype=np.float32))
+        final_arr  = _fuse_scores(emb_scores, bm25_arr, graph_arr, strat, enable_graph)
 
         docs_scored = []
         for idx, doc in enumerate(KNOWLEDGE_BASE):
             d  = doc.copy()
             es = float(emb_scores[idx])
             bs = float(bm25_arr[idx])
+            gs = float(graph_arr[idx])
             if strat == "vector":
-                d.update(embedding_score=es, bm25_score=0.0, final_score=es)
+                d.update(embedding_score=es, bm25_score=0.0, graph_score=0.0, final_score=es)
             elif strat == "bm25":
-                d.update(embedding_score=0.0, bm25_score=bs, final_score=bs)
+                d.update(embedding_score=0.0, bm25_score=bs, graph_score=0.0, final_score=bs)
             else:
-                d.update(embedding_score=es, bm25_score=bs, final_score=es * 0.6 + bs * 0.4)
+                d.update(embedding_score=es, bm25_score=bs, graph_score=gs,
+                         final_score=float(final_arr[idx]))
             d["strategy_used"] = strat
             docs_scored.append(d)
 

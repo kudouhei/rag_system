@@ -140,6 +140,10 @@ const I18N = {
       "交叉编码器重排序的优势在哪里？",
     ],
     // Agent mode
+    toggle_graph:       "Graph RAG",
+    tip_graph:          "知识图谱检索：在向量+BM25的基础上叠加实体关系图，增强跨文档推理",
+    badge_graph:        "Graph RAG",
+    score_graph:        "Graph",
     toggle_agent:       "Agent 模式",
     tip_agent:          "智能路由：自动判断直接回答/知识库检索/实时工具/多步推理",
     badge_agent:        "Agentic RAG",
@@ -165,7 +169,7 @@ const I18N = {
     // LogEntry dynamic strings
     log_start:          (q) => <>开始处理：<em style={{color:C.accent}}>「{q}」</em></>,
     log_hyde:           (doc) => <><span style={{color:C.teal,fontWeight:700}}>HyDE 假设文档：</span>&nbsp;<span style={{color:C.textMid,fontStyle:"italic"}}>「{doc.slice(0,80)}{doc.length>80?"…":""}」</span></>,
-    log_docScored:      (e) => <><span style={{color:C.textMid}}>{e.title.slice(0,22)}…</span>&nbsp;→&nbsp;<span style={{color:C.accent}}>向量 {(e.embedding_score*100).toFixed(0)}%</span>&nbsp;<span style={{color:C.green}}>BM25 {(e.bm25_score*100).toFixed(0)}%</span>&nbsp;<span style={{color:C.text,fontWeight:700}}>综合 {(e.final_score*100).toFixed(0)}%</span></>,
+    log_docScored:      (e) => <><span style={{color:C.textMid}}>{e.title.slice(0,22)}…</span>&nbsp;→&nbsp;<span style={{color:C.accent}}>向量 {(e.embedding_score*100).toFixed(0)}%</span>&nbsp;<span style={{color:C.green}}>BM25 {(e.bm25_score*100).toFixed(0)}%</span>{e.graph_score>0&&<>&nbsp;<span style={{color:"#059669"}}>Graph {(e.graph_score*100).toFixed(0)}%</span></>}&nbsp;<span style={{color:C.text,fontWeight:700}}>综合 {(e.final_score*100).toFixed(0)}%</span></>,
     log_retDone:        (e) => <><span>第 {e.iteration} 轮检索，最高分：</span><span style={{color:e.top_score>=e.threshold?C.green:C.orange,fontWeight:700}}>{(e.top_score*100).toFixed(1)}%</span><span> (阈值 {(e.threshold*100).toFixed(0)}%)</span></>,
     log_reflect:        (e) => <><span style={{color:C.orange}}>反思：</span>&nbsp;{e.failure_reason}</>,
     log_rewrite:        (e) => <><span>查询重写：</span><span style={{color:C.textMid,textDecoration:"line-through"}}>「{e.original_query}」</span>&nbsp;→&nbsp;<span style={{color:C.accent}}>「{e.new_query}」</span></>,
@@ -292,6 +296,10 @@ const I18N = {
       "What are the advantages of cross-encoder reranking?",
     ],
     // Agent mode
+    toggle_graph:       "Graph RAG",
+    tip_graph:          "Knowledge graph retrieval: adds entity-relation graph lane on top of dense+sparse",
+    badge_graph:        "Graph RAG",
+    score_graph:        "Graph",
     toggle_agent:       "Agent Mode",
     tip_agent:          "Smart routing: auto-selects direct answer / RAG / realtime tools / multi-step reasoning",
     badge_agent:        "Agentic RAG",
@@ -316,7 +324,7 @@ const I18N = {
     agent_sub_title:    "SUB-TASK RESULTS",
     log_start:          (q) => <>Processing: <em style={{color:C.accent}}>"{q}"</em></>,
     log_hyde:           (doc) => <><span style={{color:C.teal,fontWeight:700}}>HyDE doc: </span><span style={{color:C.textMid,fontStyle:"italic"}}>"{doc.slice(0,80)}{doc.length>80?"…":""}"</span></>,
-    log_docScored:      (e) => <><span style={{color:C.textMid}}>{e.title.slice(0,22)}…</span>&nbsp;→&nbsp;<span style={{color:C.accent}}>Vec {(e.embedding_score*100).toFixed(0)}%</span>&nbsp;<span style={{color:C.green}}>BM25 {(e.bm25_score*100).toFixed(0)}%</span>&nbsp;<span style={{color:C.text,fontWeight:700}}>Score {(e.final_score*100).toFixed(0)}%</span></>,
+    log_docScored:      (e) => <><span style={{color:C.textMid}}>{e.title.slice(0,22)}…</span>&nbsp;→&nbsp;<span style={{color:C.accent}}>Vec {(e.embedding_score*100).toFixed(0)}%</span>&nbsp;<span style={{color:C.green}}>BM25 {(e.bm25_score*100).toFixed(0)}%</span>{e.graph_score>0&&<>&nbsp;<span style={{color:"#059669"}}>Graph {(e.graph_score*100).toFixed(0)}%</span></>}&nbsp;<span style={{color:C.text,fontWeight:700}}>Score {(e.final_score*100).toFixed(0)}%</span></>,
     log_retDone:        (e) => <>Round {e.iteration} done, top score: <span style={{color:e.top_score>=e.threshold?C.green:C.orange,fontWeight:700}}>{(e.top_score*100).toFixed(1)}%</span> (threshold {(e.threshold*100).toFixed(0)}%)</>,
     log_reflect:        (e) => <><span style={{color:C.orange}}>Reflection: </span>{e.failure_reason}</>,
     log_rewrite:        (e) => <>Query rewrite: <span style={{color:C.textMid,textDecoration:"line-through"}}>"{e.original_query}"</span>&nbsp;→&nbsp;<span style={{color:C.accent}}>"{e.new_query}"</span></>,
@@ -488,8 +496,9 @@ const DocCard = ({ doc, rank, lang }) => (
       {doc.tags?.map(t => <Tag key={t} label={t}/>)}
     </div>
     <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:6}}>
-      {doc.embedding_score>0 && <ScoreBar value={doc.embedding_score} color={C.accent} label={tL(lang,"score_vec")}/>}
-      {doc.bm25_score>0     && <ScoreBar value={doc.bm25_score}      color={C.green}  label={tL(lang,"score_bm25")}/>}
+      {doc.embedding_score>0 && <ScoreBar value={doc.embedding_score} color={C.accent}  label={tL(lang,"score_vec")}/>}
+      {doc.bm25_score>0     && <ScoreBar value={doc.bm25_score}      color={C.green}   label={tL(lang,"score_bm25")}/>}
+      {doc.graph_score>0    && <ScoreBar value={doc.graph_score}     color="#059669"   label={tL(lang,"score_graph")}/>}
     </div>
   </div>
 );
@@ -917,6 +926,7 @@ export default function RAGDashboard() {
   const [enableRerank, setEnableRerank]   = useState(true);
   const [enableHyde, setEnableHyde]       = useState(false);
   const [enableConversation, setEnableConversation] = useState(false);
+  const [enableGraph, setEnableGraph]     = useState(false);
   const [agentMode, setAgentMode]         = useState(false);
   const [agentRoute, setAgentRoute]       = useState(null);   // {route, reason, ...}
   const [agentSubResults, setAgentSubResults] = useState([]);
@@ -1045,6 +1055,7 @@ export default function RAGDashboard() {
       enable_iterative:     enableIterative,
       enable_rerank:        enableRerank,
       enable_hyde:          enableHyde,
+      enable_graph:         enableGraph,
       confidence_threshold: threshold,
       top_k: 5,
       language: lang,
@@ -1056,7 +1067,7 @@ export default function RAGDashboard() {
       setLogs(p=>[...p,{type:"error",message:lang==="en"?"WebSocket connection failed. Ensure the backend is running on localhost:8000.":"WebSocket 连接失败，请确保后端服务运行在 localhost:8000"}]);
     };
     ws.onclose=()=>{ if(status==="running") setStatus("done"); };
-  },[query,strategy,enableIterative,enableRerank,enableHyde,enableConversation,agentMode,threshold,status,lang,conversationHistory,handleMessage]);
+  },[query,strategy,enableIterative,enableRerank,enableHyde,enableGraph,enableConversation,agentMode,threshold,status,lang,conversationHistory,handleMessage]);
 
   const handleKeyDown=(e)=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();runQuery();} };
 
@@ -1145,6 +1156,7 @@ export default function RAGDashboard() {
               {label:"Cross-Encoder",  color:C.accent },
               {label:t("badge_conv"),  color:C.green  },
             ].map(b=><Tag key={b.label} label={b.label} color={b.color}/>)}
+            {enableGraph && <Tag label={t("badge_graph")} color="#059669"/>}
             {agentMode && <Tag label={t("badge_agent")} color={C.orange}/>}
           </div>
         </div>
@@ -1183,11 +1195,52 @@ export default function RAGDashboard() {
 
           {/* Config */}
           <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:10, padding:16}}>
-            <div style={{fontSize:10, color:C.textMid, fontWeight:700, letterSpacing:"0.1em", marginBottom:12}}>
+            <div style={{fontSize:10, color:C.textMid, fontWeight:700, letterSpacing:"0.1em", marginBottom:14}}>
               {t("configLabel")}
             </div>
+
+            {/* ── 运行模式 ── */}
             <div style={{marginBottom:12}}>
-              <div style={{fontSize:11, color:C.textMid, marginBottom:6}}>{t("strategyLabel")}</div>
+              <div style={{
+                fontSize:9, fontWeight:700, letterSpacing:"0.12em",
+                color:C.textDim, marginBottom:6, textTransform:"uppercase",
+              }}>{lang==="zh" ? "运行模式" : "Mode"}</div>
+              <div style={{display:"flex", gap:6}}>
+                {/* Agent Mode — full-width prominent toggle */}
+                <button onClick={()=>setAgentMode(!agentMode)} title={t("tip_agent")} style={{
+                  flex:1, padding:"8px 10px", borderRadius:6, cursor:"pointer",
+                  background: agentMode ? `${C.red}12` : "transparent",
+                  border: `1px solid ${agentMode ? C.red+"55" : C.border}`,
+                  color: agentMode ? C.red : C.textMid,
+                  fontSize:11, fontWeight:700, fontFamily:"inherit",
+                  display:"flex", alignItems:"center", gap:6, transition:"all 0.2s",
+                }}>
+                  <span style={{width:7,height:7,borderRadius:"50%",background:agentMode?C.red:C.textDim,flexShrink:0,animation:agentMode?"pulse 2s infinite":"none"}}/>
+                  {t("toggle_agent")}
+                  {agentMode && <span style={{fontSize:9,opacity:0.7,marginLeft:"auto"}}>🚦 auto-route</span>}
+                </button>
+                <ToggleBtn labelKey="toggle_conv" val={enableConversation} onToggle={()=>setEnableConversation(!enableConversation)} color={C.orange} tipKey="tip_conv"/>
+              </div>
+              {enableConversation && conversationHistory.length>0 && (
+                <div style={{
+                  marginTop:6, padding:"5px 10px", borderRadius:5,
+                  background:`${C.orange}10`, border:`1px solid ${C.orange}33`,
+                  fontSize:11, color:C.orange, display:"flex", alignItems:"center", justifyContent:"space-between",
+                }}>
+                  <span>{t("convCtx", Math.floor(conversationHistory.length/2))}</span>
+                  <button onClick={()=>setConversationHistory([])} style={{
+                    fontSize:10, color:C.red, background:"none", border:"none", cursor:"pointer", padding:0,
+                  }}>{t("clearBtn")}</button>
+                </div>
+              )}
+            </div>
+
+            {/* ── 检索策略 ── */}
+            <div style={{marginBottom:12}}>
+              <div style={{
+                fontSize:9, fontWeight:700, letterSpacing:"0.12em",
+                color:C.textDim, marginBottom:6, textTransform:"uppercase",
+              }}>{lang==="zh" ? "检索策略" : "Strategy"}</div>
               <div style={{display:"flex", gap:4, flexWrap:"wrap"}}>
                 {STRATEGIES.map(s=>(
                   <Pill key={s.key} active={strategy===s.key} onClick={()=>setStrategy(s.key)}>
@@ -1196,25 +1249,25 @@ export default function RAGDashboard() {
                 ))}
               </div>
             </div>
-            <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:12}}>
-              <ToggleBtn labelKey="toggle_iterative" val={enableIterative} onToggle={()=>setEnableIterative(!enableIterative)} color={C.accent}  tipKey="tip_iterative"/>
-              <ToggleBtn labelKey="toggle_rerank"    val={enableRerank}    onToggle={()=>setEnableRerank(!enableRerank)}       color={C.purple} tipKey="tip_rerank"/>
-              <ToggleBtn labelKey="toggle_hyde"      val={enableHyde}      onToggle={()=>setEnableHyde(!enableHyde)}           color={C.teal}   tipKey="tip_hyde"/>
-              <ToggleBtn labelKey="toggle_conv"      val={enableConversation} onToggle={()=>setEnableConversation(!enableConversation)} color={C.orange} tipKey="tip_conv"/>
-              <ToggleBtn labelKey="toggle_agent"     val={agentMode}       onToggle={()=>setAgentMode(!agentMode)}             color={C.red}    tipKey="tip_agent"/>
-            </div>
-            {agentMode && (
+
+            {/* ── 检索增强 ── */}
+            <div style={{marginBottom:12}}>
               <div style={{
-                padding:"8px 10px", borderRadius:6, marginBottom:8,
-                background:`${C.red}08`, border:`1px solid ${C.red}30`,
-                fontSize:11, color:C.red, lineHeight:1.5,
-              }}>
-                🚦 {lang==="zh"
-                  ? "Agent 路由已开启：系统将自动判断最佳路径（直接回答 / RAG / 工具 / 多步推理）"
-                  : "Agent routing enabled: auto-selects best path (direct / RAG / tools / multi-step)"}
+                fontSize:9, fontWeight:700, letterSpacing:"0.12em",
+                color:C.textDim, marginBottom:6, textTransform:"uppercase",
+              }}>{lang==="zh" ? "检索增强" : "Enhancements"}</div>
+              <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:6}}>
+                <ToggleBtn labelKey="toggle_iterative" val={enableIterative} onToggle={()=>setEnableIterative(!enableIterative)} color={C.accent}  tipKey="tip_iterative"/>
+                <ToggleBtn labelKey="toggle_rerank"    val={enableRerank}    onToggle={()=>setEnableRerank(!enableRerank)}       color={C.purple} tipKey="tip_rerank"/>
+                <ToggleBtn labelKey="toggle_hyde"      val={enableHyde}      onToggle={()=>setEnableHyde(!enableHyde)}           color={C.teal}   tipKey="tip_hyde"/>
+                <ToggleBtn labelKey="toggle_graph"     val={enableGraph}     onToggle={()=>setEnableGraph(!enableGraph)}         color="#059669"  tipKey="tip_graph"/>
               </div>
-            )}
-            <div>
+            </div>
+
+            {/* ── 置信度阈值 ── */}
+            <div style={{
+              paddingTop:10, borderTop:`1px solid ${C.border}`,
+            }}>
               <div style={{display:"flex", justifyContent:"space-between", marginBottom:6}}>
                 <span style={{fontSize:11, color:C.textMid}}>{t("thresholdLabel")}</span>
                 <span style={{fontSize:11, color:C.accent, fontWeight:700}}>{(threshold*100).toFixed(0)}%</span>
@@ -1223,18 +1276,6 @@ export default function RAGDashboard() {
                 onChange={e=>setThreshold(Number(e.target.value))}
                 style={{width:"100%", accentColor:C.accent}}/>
             </div>
-            {enableConversation && conversationHistory.length>0 && (
-              <div style={{
-                marginTop:10, padding:"6px 10px", borderRadius:6,
-                background:`${C.orange}10`, border:`1px solid ${C.orange}33`,
-                fontSize:11, color:C.orange,
-              }}>
-                {t("convCtx", Math.floor(conversationHistory.length/2))}
-                <button onClick={()=>setConversationHistory([])} style={{
-                  marginLeft:8, fontSize:10, color:C.red, background:"none", border:"none", cursor:"pointer", padding:0,
-                }}>{t("clearBtn")}</button>
-              </div>
-            )}
           </div>
 
           {/* Run Button */}
