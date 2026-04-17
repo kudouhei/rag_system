@@ -28,3 +28,6 @@ pypdf>=4.0.0
 
 # MCP Server — exposes the RAG system as an MCP tool for Claude / Cursor / etc.
 fastmcp>=2.0.0
+
+# Agentic RAG — web search tool (no API key required)
+duckduckgo_search>=6.0.0

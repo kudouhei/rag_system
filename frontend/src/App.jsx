@@ -139,6 +139,29 @@ const I18N = {
       "如何评估 RAG 系统的召回率？",
       "交叉编码器重排序的优势在哪里？",
     ],
+    // Agent mode
+    toggle_agent:       "Agent 模式",
+    tip_agent:          "智能路由：自动判断直接回答/知识库检索/实时工具/多步推理",
+    badge_agent:        "Agentic RAG",
+    agent_route_label:  "路由决策",
+    agent_routes: {
+      direct:   { label:"直接回答",   color:"#059669", icon:"💡" },
+      rag:      { label:"知识库检索", color:"#0284c7", icon:"📚" },
+      realtime: { label:"实时工具",   color:"#ea580c", icon:"⚡" },
+      complex:  { label:"多步推理",   color:"#7c3aed", icon:"🧩" },
+    },
+    log_agent_routing:  "分析问题类型…",
+    log_agent_route:    (e) => {
+      const r = { direct:"直接回答", rag:"知识库检索", realtime:"实时工具", complex:"多步推理" };
+      return <><span style={{fontWeight:700}}>路由→ {r[e.route]||e.route}</span>&nbsp;<span style={{color:C.textMid}}>({e.reason})</span></>;
+    },
+    log_agent_tool:     (e) => <><span style={{color:C.orange,fontWeight:700}}>🔧 {e.tool}</span>&nbsp;<span style={{color:C.textMid}}>调用中…</span></>,
+    log_agent_result:   (e) => <><span style={{color:C.green,fontWeight:700}}>✓ {e.tool}</span>&nbsp;<span style={{color:C.textMid,fontSize:11,fontFamily:"monospace"}}>{e.result?.slice(0,80)}…</span></>,
+    log_agent_decomp:   (e) => <><span style={{color:C.purple,fontWeight:700}}>🧩 拆解：</span>&nbsp;{e.sub_queries?.join(" / ")}</>,
+    log_agent_subq:     (e) => <><span style={{color:C.textMid}}>子任务 {e.index}/{e.total}：</span><span style={{color:C.accent}}>「{e.query}」</span></>,
+    log_agent_subr:     (e) => <><span style={{color:C.green}}>✓ 子任务 {e.index} 完成</span>&nbsp;<span style={{color:C.textMid,fontSize:11}}>{e.answer_preview?.slice(0,60)}…</span></>,
+    log_agent_done:     (e) => <span style={{color:C.green,fontWeight:700}}>✓ Agent 完成（{e.route}），{e.elapsed_seconds}s</span>,
+    agent_sub_title:    "SUB-TASK RESULTS",
     // LogEntry dynamic strings
     log_start:          (q) => <>开始处理：<em style={{color:C.accent}}>「{q}」</em></>,
     log_hyde:           (doc) => <><span style={{color:C.teal,fontWeight:700}}>HyDE 假设文档：</span>&nbsp;<span style={{color:C.textMid,fontStyle:"italic"}}>「{doc.slice(0,80)}{doc.length>80?"…":""}」</span></>,
@@ -268,6 +291,29 @@ const I18N = {
       "How do you evaluate the recall rate of a RAG system?",
       "What are the advantages of cross-encoder reranking?",
     ],
+    // Agent mode
+    toggle_agent:       "Agent Mode",
+    tip_agent:          "Smart routing: auto-selects direct answer / RAG / realtime tools / multi-step reasoning",
+    badge_agent:        "Agentic RAG",
+    agent_route_label:  "Route Decision",
+    agent_routes: {
+      direct:   { label:"Direct Answer", color:"#059669", icon:"💡" },
+      rag:      { label:"RAG Retrieval", color:"#0284c7", icon:"📚" },
+      realtime: { label:"Realtime Tools", color:"#ea580c", icon:"⚡" },
+      complex:  { label:"Multi-step",    color:"#7c3aed", icon:"🧩" },
+    },
+    log_agent_routing:  "Analyzing query intent…",
+    log_agent_route:    (e) => {
+      const r = { direct:"Direct Answer", rag:"RAG Retrieval", realtime:"Realtime Tools", complex:"Multi-step" };
+      return <><span style={{fontWeight:700}}>Route → {r[e.route]||e.route}</span>&nbsp;<span style={{color:C.textMid}}>({e.reason})</span></>;
+    },
+    log_agent_tool:     (e) => <><span style={{color:C.orange,fontWeight:700}}>🔧 {e.tool}</span>&nbsp;<span style={{color:C.textMid}}>calling…</span></>,
+    log_agent_result:   (e) => <><span style={{color:C.green,fontWeight:700}}>✓ {e.tool}</span>&nbsp;<span style={{color:C.textMid,fontSize:11,fontFamily:"monospace"}}>{e.result?.slice(0,80)}…</span></>,
+    log_agent_decomp:   (e) => <><span style={{color:C.purple,fontWeight:700}}>🧩 Decomposed: </span>{e.sub_queries?.join(" / ")}</>,
+    log_agent_subq:     (e) => <><span style={{color:C.textMid}}>Sub-task {e.index}/{e.total}: </span><span style={{color:C.accent}}>"{e.query}"</span></>,
+    log_agent_subr:     (e) => <><span style={{color:C.green}}>✓ Sub-task {e.index} done</span>&nbsp;<span style={{color:C.textMid,fontSize:11}}>{e.answer_preview?.slice(0,60)}…</span></>,
+    log_agent_done:     (e) => <span style={{color:C.green,fontWeight:700}}>✓ Agent done ({e.route}) in {e.elapsed_seconds}s</span>,
+    agent_sub_title:    "SUB-TASK RESULTS",
     log_start:          (q) => <>Processing: <em style={{color:C.accent}}>"{q}"</em></>,
     log_hyde:           (doc) => <><span style={{color:C.teal,fontWeight:700}}>HyDE doc: </span><span style={{color:C.textMid,fontStyle:"italic"}}>"{doc.slice(0,80)}{doc.length>80?"…":""}"</span></>,
     log_docScored:      (e) => <><span style={{color:C.textMid}}>{e.title.slice(0,22)}…</span>&nbsp;→&nbsp;<span style={{color:C.accent}}>Vec {(e.embedding_score*100).toFixed(0)}%</span>&nbsp;<span style={{color:C.green}}>BM25 {(e.bm25_score*100).toFixed(0)}%</span>&nbsp;<span style={{color:C.text,fontWeight:700}}>Score {(e.final_score*100).toFixed(0)}%</span></>,
@@ -359,6 +405,10 @@ const LogEntry = ({ entry, lang }) => {
     retrieval_done:"✅", reflection:"🤔", query_rewrite:"✏️",
     rerank_score:"🔢", reranking_done:"🎯", answer_token:"💬",
     pipeline_complete:"🏁", error:"❌", hyde_generation:"🔮",
+    // Agent events
+    agent_routing:"🔍", agent_route:"🚦", agent_tool_call:"🔧",
+    agent_tool_result:"✅", agent_decompose:"🧩", agent_subquery:"▷",
+    agent_subresult:"◈", agent_complete:"🏁",
   };
 
   const getContent = () => {
@@ -373,6 +423,15 @@ const LogEntry = ({ entry, lang }) => {
       case "rerank_score":       return <span style={{fontSize:12}}>{tL(lang,"log_rerank",entry)}</span>;
       case "reranking_done":     return tL(lang, "log_rerankDone", entry);
       case "pipeline_complete":  return tL(lang, "log_done", entry);
+      // Agent events
+      case "agent_routing":      return <span style={{color:C.textMid}}>{tL(lang,"log_agent_routing")}</span>;
+      case "agent_route":        return tL(lang, "log_agent_route", entry);
+      case "agent_tool_call":    return tL(lang, "log_agent_tool", entry);
+      case "agent_tool_result":  return tL(lang, "log_agent_result", entry);
+      case "agent_decompose":    return tL(lang, "log_agent_decomp", entry);
+      case "agent_subquery":     return tL(lang, "log_agent_subq", entry);
+      case "agent_subresult":    return tL(lang, "log_agent_subr", entry);
+      case "agent_complete":     return tL(lang, "log_agent_done", entry);
       default: return <span>{entry.message || JSON.stringify(entry).slice(0,80)}</span>;
     }
   };
@@ -858,6 +917,9 @@ export default function RAGDashboard() {
   const [enableRerank, setEnableRerank]   = useState(true);
   const [enableHyde, setEnableHyde]       = useState(false);
   const [enableConversation, setEnableConversation] = useState(false);
+  const [agentMode, setAgentMode]         = useState(false);
+  const [agentRoute, setAgentRoute]       = useState(null);   // {route, reason, ...}
+  const [agentSubResults, setAgentSubResults] = useState([]);
   const [threshold, setThreshold]         = useState(0.55);
 
   const [status, setStatus]               = useState("idle");
@@ -952,6 +1014,16 @@ export default function RAGDashboard() {
       setElapsed(msg.elapsed_seconds);
       setStatus("done");
     }
+    // Agent events
+    if (msg.type==="agent_route") { setAgentRoute(msg); }
+    if (msg.type==="agent_complete") {
+      setDocs(msg.retrieved_docs||[]);
+      setMetrics(msg.metrics||null);
+      setIterations([]);
+      setElapsed(msg.elapsed_seconds);
+      if (msg.sub_results) setAgentSubResults(msg.sub_results);
+      setStatus("done");
+    }
     if (msg.type==="error") setStatus("error");
     setLogs(p=>[...p,msg]);
   },[]);
@@ -963,8 +1035,10 @@ export default function RAGDashboard() {
     setMetrics(null); setIterations([]); setElapsed(null);
     setHydeDoc(""); setActiveTab("process");
     setFeedbackGiven(null); setFeedbackComment("");
+    setAgentRoute(null); setAgentSubResults([]);
 
-    const ws=new WebSocket("ws://localhost:8000/ws/query");
+    const wsUrl = agentMode ? "ws://localhost:8000/ws/agent" : "ws://localhost:8000/ws/query";
+    const ws=new WebSocket(wsUrl);
     wsRef.current=ws;
     ws.onopen=()=>ws.send(JSON.stringify({
       query, strategy,
@@ -982,7 +1056,7 @@ export default function RAGDashboard() {
       setLogs(p=>[...p,{type:"error",message:lang==="en"?"WebSocket connection failed. Ensure the backend is running on localhost:8000.":"WebSocket 连接失败，请确保后端服务运行在 localhost:8000"}]);
     };
     ws.onclose=()=>{ if(status==="running") setStatus("done"); };
-  },[query,strategy,enableIterative,enableRerank,enableHyde,enableConversation,threshold,status,lang,conversationHistory,handleMessage]);
+  },[query,strategy,enableIterative,enableRerank,enableHyde,enableConversation,agentMode,threshold,status,lang,conversationHistory,handleMessage]);
 
   const handleKeyDown=(e)=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();runQuery();} };
 
@@ -1071,6 +1145,7 @@ export default function RAGDashboard() {
               {label:"Cross-Encoder",  color:C.accent },
               {label:t("badge_conv"),  color:C.green  },
             ].map(b=><Tag key={b.label} label={b.label} color={b.color}/>)}
+            {agentMode && <Tag label={t("badge_agent")} color={C.orange}/>}
           </div>
         </div>
       </div>
@@ -1126,7 +1201,19 @@ export default function RAGDashboard() {
               <ToggleBtn labelKey="toggle_rerank"    val={enableRerank}    onToggle={()=>setEnableRerank(!enableRerank)}       color={C.purple} tipKey="tip_rerank"/>
               <ToggleBtn labelKey="toggle_hyde"      val={enableHyde}      onToggle={()=>setEnableHyde(!enableHyde)}           color={C.teal}   tipKey="tip_hyde"/>
               <ToggleBtn labelKey="toggle_conv"      val={enableConversation} onToggle={()=>setEnableConversation(!enableConversation)} color={C.orange} tipKey="tip_conv"/>
+              <ToggleBtn labelKey="toggle_agent"     val={agentMode}       onToggle={()=>setAgentMode(!agentMode)}             color={C.red}    tipKey="tip_agent"/>
             </div>
+            {agentMode && (
+              <div style={{
+                padding:"8px 10px", borderRadius:6, marginBottom:8,
+                background:`${C.red}08`, border:`1px solid ${C.red}30`,
+                fontSize:11, color:C.red, lineHeight:1.5,
+              }}>
+                🚦 {lang==="zh"
+                  ? "Agent 路由已开启：系统将自动判断最佳路径（直接回答 / RAG / 工具 / 多步推理）"
+                  : "Agent routing enabled: auto-selects best path (direct / RAG / tools / multi-step)"}
+              </div>
+            )}
             <div>
               <div style={{display:"flex", justifyContent:"space-between", marginBottom:6}}>
                 <span style={{fontSize:11, color:C.textMid}}>{t("thresholdLabel")}</span>
@@ -1347,6 +1434,75 @@ export default function RAGDashboard() {
                   {logs.map((entry,i)=><LogEntry key={i} entry={entry} lang={lang}/>)}
                   <div ref={logsEndRef}/>
                 </div>
+                {/* Agent Route Decision card */}
+                {agentMode && agentRoute && (()=>{
+                  const routes = t("agent_routes");
+                  const ri = routes[agentRoute.route] || { label:agentRoute.route, color:C.textMid, icon:"•" };
+                  return (
+                    <div style={{
+                      background:`${ri.color}08`, border:`1px solid ${ri.color}33`,
+                      borderRadius:8, padding:"10px 14px", marginTop:12,
+                      display:"flex", alignItems:"center", gap:10,
+                    }}>
+                      <span style={{fontSize:18}}>{ri.icon}</span>
+                      <div>
+                        <div style={{fontSize:10, color:ri.color, fontWeight:700, letterSpacing:"0.08em"}}>
+                          {t("agent_route_label")}
+                        </div>
+                        <div style={{fontSize:13, fontWeight:700, color:ri.color}}>
+                          {ri.label}
+                          {agentRoute.reason && <span style={{fontSize:11, fontWeight:400, color:C.textMid, marginLeft:8}}>— {agentRoute.reason}</span>}
+                        </div>
+                        {agentRoute.sub_queries?.length > 0 && (
+                          <div style={{fontSize:11, color:C.textMid, marginTop:4}}>
+                            {agentRoute.sub_queries.map((q,i)=>(
+                              <span key={i} style={{
+                                display:"inline-block", margin:"2px 4px 2px 0",
+                                padding:"1px 7px", borderRadius:3,
+                                background:`${C.purple}12`, color:C.purple, border:`1px solid ${C.purple}30`,
+                              }}>{q}</span>
+                            ))}
+                          </div>
+                        )}
+                        {agentRoute.tools?.length > 0 && (
+                          <div style={{fontSize:11, color:C.textMid, marginTop:4}}>
+                            {agentRoute.tools.map((t,i)=>(
+                              <span key={i} style={{
+                                display:"inline-block", margin:"2px 4px 2px 0",
+                                padding:"1px 7px", borderRadius:3,
+                                background:`${C.orange}12`, color:C.orange, border:`1px solid ${C.orange}30`,
+                              }}>🔧 {t}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Sub-task results for complex route */}
+                {agentMode && agentSubResults.length > 0 && (
+                  <div style={{background:C.surface, border:`1px solid ${C.purple}33`, borderRadius:8, padding:14, marginTop:12}}>
+                    <div style={{fontSize:10, color:C.purple, fontWeight:700, letterSpacing:"0.1em", marginBottom:8}}>
+                      {t("agent_sub_title")}
+                    </div>
+                    {agentSubResults.map((r,i)=>(
+                      <div key={i} style={{
+                        borderLeft:`3px solid ${C.purple}44`, paddingLeft:10,
+                        marginBottom:10, paddingBottom:6,
+                        borderBottom: i < agentSubResults.length-1 ? `1px solid ${C.border}` : "none",
+                      }}>
+                        <div style={{fontSize:11, color:C.purple, fontWeight:700, marginBottom:2}}>
+                          {i+1}. {r.query}
+                        </div>
+                        <div style={{fontSize:12, color:C.textMid, lineHeight:1.5}}>
+                          {r.answer_preview}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {answer && (
                   <div style={{background:C.surface, border:`1px solid ${C.green}44`, borderRadius:8, padding:14, marginTop:12}}>
                     <div style={{fontSize:10, color:C.green, fontWeight:700, letterSpacing:"0.1em", marginBottom:8}}>

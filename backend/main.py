@@ -768,6 +768,25 @@ async def websocket_query(websocket: WebSocket) -> None:
             pass
 
 
+@app.websocket("/ws/agent")
+async def websocket_agent(websocket: WebSocket) -> None:
+    """Agentic RAG pipeline with intelligent routing (direct / rag / realtime / complex)."""
+    await websocket.accept()
+    try:
+        while True:
+            data    = await websocket.receive_text()
+            request = QueryRequest(**json.loads(data))
+            await run_agentic_pipeline(websocket, request)
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.error("Agent WebSocket error: %s", e)
+        try:
+            await websocket.send_text(json.dumps({"type": "error", "message": str(e)}))
+        except Exception:
+            pass
+
+
 async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
     t0   = time.time()
     lang = req.language or "zh"
@@ -1206,6 +1225,351 @@ def _iter_summary(iteration, query, strategy, top_score, reflected, results):
         "top_score": round(top_score, 3), "reflected": reflected,
         "results": [{"id": r["id"], "title": r["title"], "score": round(r["final_score"], 3)} for r in results[:3]],
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Agentic RAG — Router Agent + Tools + Orchestrator
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Tool: current datetime ─────────────────────────────────────────────────────
+
+def tool_datetime() -> str:
+    weekdays_zh = ["一", "二", "三", "四", "五", "六", "日"]
+    weekdays_en = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    now = datetime.now()
+    return json.dumps({
+        "datetime":   now.strftime("%Y-%m-%d %H:%M:%S"),
+        "date_zh":    now.strftime("%Y年%m月%d日"),
+        "weekday_zh": f"星期{weekdays_zh[now.weekday()]}",
+        "weekday_en": weekdays_en[now.weekday()],
+        "timestamp":  int(now.timestamp()),
+    }, ensure_ascii=False)
+
+
+# ── Tool: safe calculator ──────────────────────────────────────────────────────
+
+def tool_calculator(expression: str) -> str:
+    """Evaluate a math expression using Python's ast module (no eval() risk)."""
+    import ast as _ast
+    import operator as _op
+    _OPS = {
+        _ast.Add: _op.add, _ast.Sub: _op.sub,
+        _ast.Mult: _op.mul, _ast.Div: _op.truediv,
+        _ast.Pow: _op.pow, _ast.Mod: _op.mod, _ast.FloorDiv: _op.floordiv,
+    }
+
+    def _eval(node):
+        if isinstance(node, _ast.Constant) and isinstance(node.value, (int, float)):
+            return node.value
+        if isinstance(node, _ast.BinOp) and type(node.op) in _OPS:
+            return _OPS[type(node.op)](_eval(node.left), _eval(node.right))
+        if isinstance(node, _ast.UnaryOp) and isinstance(node.op, _ast.USub):
+            return -_eval(node.operand)
+        raise ValueError(f"Unsupported expression node: {type(node).__name__}")
+
+    try:
+        result = _eval(_ast.parse(expression.strip(), mode="eval").body)
+        return json.dumps({"expression": expression, "result": result})
+    except Exception as e:
+        return json.dumps({"expression": expression, "error": str(e)})
+
+
+# ── Tool: web search (DuckDuckGo, no API key needed) ──────────────────────────
+
+async def tool_web_search(query: str, max_results: int = 4) -> str:
+    try:
+        from duckduckgo_search import DDGS
+        loop = asyncio.get_event_loop()
+
+        def _search():
+            with DDGS() as ddgs:
+                return list(ddgs.text(query, max_results=max_results))
+
+        results = await loop.run_in_executor(None, _search)
+        formatted = [
+            {"title": r.get("title", ""), "url": r.get("href", ""), "snippet": r.get("body", "")[:300]}
+            for r in results
+        ]
+        return json.dumps({"query": query, "results": formatted}, ensure_ascii=False, indent=2)
+    except ImportError:
+        return json.dumps({"error": "duckduckgo_search not installed — run: pip install duckduckgo_search"})
+    except Exception as e:
+        return json.dumps({"error": f"Web search unavailable: {e}"})
+
+
+# ── Router system prompts ──────────────────────────────────────────────────────
+
+_ROUTER_SYS: dict = {
+    "zh": (
+        "你是智能问题路由器。将用户查询分配到最合适的路由（返回严格JSON，无多余文字）。\n\n"
+        "路由类型：\n"
+        '• "direct"   — 通用知识、简单定义、创意写作、编程问题（LLM 可直接回答）\n'
+        '• "rag"      — 需查询企业内部文档/专属知识库才能回答\n'
+        '• "realtime" — 需实时数据：当前时间/日期、数学计算、网络搜索\n'
+        '• "complex"  — 需拆分为多个子问题才能完整回答的复杂分析题\n\n'
+        "返回格式：\n"
+        '{"route":"direct|rag|realtime|complex","reason":"路由原因（10字以内）",'
+        '"sub_queries":["子问题1","子问题2"],"tools":["datetime","calculator","web_search"]}\n\n'
+        "注：sub_queries 仅 complex 时填写；tools 仅 realtime 时填写；其余为空数组"
+    ),
+    "en": (
+        "You are an intelligent query router. Classify the query into one route "
+        "(return strict JSON, no extra text).\n\n"
+        "Routes:\n"
+        '• "direct"   — General knowledge, definitions, creative/coding tasks (LLM answers directly)\n'
+        '• "rag"      — Questions about internal company docs or proprietary knowledge base\n'
+        '• "realtime" — Needs real-time data: current time/date, math calculation, web search\n'
+        '• "complex"  — Needs decomposition into multiple sub-questions for complete analysis\n\n'
+        "Return format:\n"
+        '{"route":"direct|rag|realtime|complex","reason":"brief reason (≤8 words)",'
+        '"sub_queries":["sub-q 1","sub-q 2"],"tools":["datetime","calculator","web_search"]}\n\n'
+        "Note: sub_queries only for complex; tools only for realtime; others empty arrays"
+    ),
+}
+
+
+async def route_query(query: str, language: str = "zh") -> dict:
+    """LLM-based query router. Falls back to 'rag' when LLM is unavailable."""
+    import re as _re
+    default = {
+        "route": "rag",
+        "reason": "默认路由" if language == "zh" else "default",
+        "sub_queries": [], "tools": [],
+    }
+    if not llm_client:
+        return default
+
+    raw = await llm_call(
+        messages=[
+            {"role": "system", "content": _ROUTER_SYS.get(language, _ROUTER_SYS["zh"])},
+            {"role": "user",   "content": query},
+        ],
+        max_tokens=200,
+        temperature=0.1,
+    )
+    if not raw:
+        return default
+
+    try:
+        m = _re.search(r'\{.*?\}', raw, _re.DOTALL)
+        if m:
+            p = json.loads(m.group())
+            return {
+                "route":       p.get("route", "rag"),
+                "reason":      p.get("reason", ""),
+                "sub_queries": p.get("sub_queries", []) or [],
+                "tools":       p.get("tools", []) or [],
+            }
+    except Exception as e:
+        logger.warning("Router parse error: %s — raw=%r", e, raw[:200])
+    return default
+
+
+# ── Agentic Pipeline Orchestrator ─────────────────────────────────────────────
+
+async def run_agentic_pipeline(ws: WebSocket, req: QueryRequest) -> None:
+    """
+    Route query to the optimal execution path:
+      direct   → Direct LLM answer (no retrieval overhead)
+      rag      → Existing Adaptive RAG pipeline (full feature set)
+      realtime → Tool calls: datetime / calculator / web_search
+      complex  → Multi-step decomposition → per-subtask RAG → synthesis
+    """
+    t0   = time.time()
+    lang = req.language or "zh"
+
+    # ── Step 1: Route ──────────────────────────────────────────────────────
+    await ws.send_text(json.dumps({
+        "type":    "agent_routing",
+        "message": "分析问题类型…" if lang == "zh" else "Analyzing query intent…",
+    }))
+    route_info = await route_query(req.query, lang)
+    route      = route_info["route"]
+    await ws.send_text(json.dumps({
+        "type":        "agent_route",
+        "route":       route,
+        "reason":      route_info["reason"],
+        "sub_queries": route_info.get("sub_queries", []),
+        "tools":       route_info.get("tools", []),
+    }))
+
+    # ── 2a. RAG → delegate to existing pipeline ────────────────────────────
+    if route == "rag":
+        await run_rag_pipeline(ws, req)
+        return
+
+    # ── 2b. Direct LLM ────────────────────────────────────────────────────
+    if route == "direct":
+        await ws.send_text(json.dumps({
+            "type": "phase_start", "phase": "generation",
+            "message": "直接生成答案（无需检索）…" if lang == "zh" else "Generating answer directly (no retrieval)…",
+        }))
+        history_dicts = [h.model_dump() for h in req.history]
+        full_answer   = await llm_stream_answer(ws, req.query, [], history_dicts, lang)
+        await ws.send_text(json.dumps({
+            "type": "agent_complete", "route": "direct",
+            "final_answer": full_answer, "elapsed_seconds": round(time.time() - t0, 2),
+            "retrieved_docs": [], "metrics": {},
+        }))
+        return
+
+    # ── 2c. Realtime: tool calls ───────────────────────────────────────────
+    if route == "realtime":
+        import re as _re
+        tools        = route_info.get("tools", [])
+        tool_results = {}
+
+        for tool_name in tools:
+            await ws.send_text(json.dumps({
+                "type":    "agent_tool_call",
+                "tool":    tool_name,
+                "message": f"调用工具：{tool_name}" if lang == "zh" else f"Calling tool: {tool_name}",
+            }))
+            if tool_name == "datetime":
+                result_str = tool_datetime()
+            elif tool_name == "calculator":
+                expr_m     = _re.search(r'[\d\s\+\-\*\/\^\(\)\.]+', req.query)
+                result_str = tool_calculator(expr_m.group().strip() if expr_m else req.query)
+            elif tool_name == "web_search":
+                result_str = await tool_web_search(req.query)
+            else:
+                result_str = json.dumps({"error": f"Unknown tool: {tool_name}"})
+
+            tool_results[tool_name] = result_str
+            await ws.send_text(json.dumps({
+                "type": "agent_tool_result", "tool": tool_name,
+                "result": result_str[:600],
+            }))
+
+        await ws.send_text(json.dumps({
+            "type": "phase_start", "phase": "generation",
+            "message": "基于工具结果生成答案…" if lang == "zh" else "Synthesising from tool results…",
+        }))
+        tools_ctx  = "\n".join(f"[{t}]: {r}" for t, r in tool_results.items())
+        sys_prompt = (
+            "你是智能助手，根据工具调用结果准确回答用户问题，语言自然。"
+            if lang == "zh" else
+            "You are an assistant. Answer accurately based on tool results. Be direct and natural."
+        )
+        full_answer = ""
+        if llm_client:
+            try:
+                stream = await llm_client.chat.completions.create(
+                    model=DEEPSEEK_MODEL,
+                    messages=[
+                        {"role": "system", "content": sys_prompt},
+                        {"role": "user",   "content": f"工具结果：\n{tools_ctx}\n\n问题：{req.query}"},
+                    ],
+                    stream=True, max_tokens=800, temperature=0.3,
+                )
+                async for chunk in stream:
+                    token = chunk.choices[0].delta.content or ""
+                    if token:
+                        full_answer += token
+                        await ws.send_text(json.dumps({
+                            "type": "answer_token", "token": token,
+                            "full_answer_so_far": full_answer,
+                        }))
+            except Exception as e:
+                full_answer = tools_ctx
+                logger.error("Realtime synthesis error: %s", e)
+        else:
+            full_answer = tools_ctx
+            await ws.send_text(json.dumps({
+                "type": "answer_token", "token": full_answer, "full_answer_so_far": full_answer,
+            }))
+
+        await ws.send_text(json.dumps({
+            "type": "agent_complete", "route": "realtime",
+            "final_answer": full_answer, "elapsed_seconds": round(time.time() - t0, 2),
+            "retrieved_docs": [], "metrics": {}, "tool_calls": list(tool_results.keys()),
+        }))
+        return
+
+    # ── 2d. Complex: decompose → per-subtask RAG → synthesise ─────────────
+    if route == "complex":
+        sub_queries = route_info.get("sub_queries", [])
+        if not sub_queries:
+            await run_rag_pipeline(ws, req)
+            return
+
+        await ws.send_text(json.dumps({
+            "type":        "agent_decompose",
+            "sub_queries": sub_queries,
+            "message":     f"拆解为 {len(sub_queries)} 个子任务…" if lang == "zh" else f"Decomposed into {len(sub_queries)} sub-tasks…",
+        }))
+
+        sub_results: List[dict] = []
+        for i, sub_q in enumerate(sub_queries):
+            await ws.send_text(json.dumps({
+                "type": "agent_subquery", "index": i + 1,
+                "total": len(sub_queries), "query": sub_q,
+                "message": (f"子任务 {i+1}/{len(sub_queries)}：{sub_q}"
+                            if lang == "zh" else f"Sub-task {i+1}/{len(sub_queries)}: {sub_q}"),
+            }))
+            sub = await query_rag(sub_q, strategy="adaptive", top_k=3, language=lang)
+            preview = sub["answer"][:200] + ("…" if len(sub["answer"]) > 200 else "")
+            sub_results.append({"query": sub_q, "answer": sub["answer"], "docs": sub["docs"][:2]})
+            await ws.send_text(json.dumps({
+                "type": "agent_subresult", "index": i + 1,
+                "query": sub_q, "answer_preview": preview,
+            }))
+
+        await ws.send_text(json.dumps({
+            "type": "phase_start", "phase": "generation",
+            "message": "整合子任务，生成综合答案…" if lang == "zh" else "Synthesising sub-task results…",
+        }))
+        sub_ctx = "\n\n".join(
+            f"【子问题{i+1}】{r['query']}\n【答案{i+1}】{r['answer']}"
+            for i, r in enumerate(sub_results)
+        )
+        sys_syn = (
+            "你是综合分析专家。根据多个子问题的答案，给出最终全面回答，结构清晰，语言流畅。"
+            if lang == "zh" else
+            "You are an expert synthesiser. Combine the sub-question answers into a comprehensive, well-structured final answer."
+        )
+        full_answer = ""
+        if llm_client:
+            try:
+                stream = await llm_client.chat.completions.create(
+                    model=DEEPSEEK_MODEL,
+                    messages=[
+                        {"role": "system", "content": sys_syn},
+                        {"role": "user",   "content": f"原始问题：{req.query}\n\n子问题答案：\n{sub_ctx}"},
+                    ],
+                    stream=True, max_tokens=2000, temperature=0.5,
+                )
+                async for chunk in stream:
+                    token = chunk.choices[0].delta.content or ""
+                    if token:
+                        full_answer += token
+                        await ws.send_text(json.dumps({
+                            "type": "answer_token", "token": token,
+                            "full_answer_so_far": full_answer,
+                        }))
+            except Exception as e:
+                full_answer = sub_ctx
+                logger.error("Complex synthesis error: %s", e)
+        else:
+            full_answer = sub_ctx
+            await ws.send_text(json.dumps({
+                "type": "answer_token", "token": full_answer, "full_answer_so_far": full_answer,
+            }))
+
+        all_docs, seen = [], set()
+        for r in sub_results:
+            for d in r["docs"]:
+                if d["id"] not in seen:
+                    all_docs.append(d)
+                    seen.add(d["id"])
+
+        await ws.send_text(json.dumps({
+            "type": "agent_complete", "route": "complex",
+            "final_answer": full_answer, "elapsed_seconds": round(time.time() - t0, 2),
+            "retrieved_docs": all_docs,
+            "sub_results": [{"query": r["query"], "answer_preview": r["answer"][:200]} for r in sub_results],
+            "metrics": {},
+        }))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
