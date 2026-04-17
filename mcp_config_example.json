@@ -1,0 +1,40 @@
+{
+  "_comment": "MCP configuration examples for connecting AI clients to the RAG knowledge base.",
+
+  "claude_desktop": {
+    "_comment": "Add to: ~/Library/Application Support/Claude/claude_desktop_config.json  (macOS)",
+    "mcpServers": {
+      "enterprise-rag": {
+        "command": "python",
+        "args": ["/ABSOLUTE/PATH/TO/rag_system/backend/mcp_server.py"],
+        "env": {
+          "DEEPSEEK_API_KEY": "sk-your-key-here",
+          "DEEPSEEK_MODEL": "deepseek-chat",
+          "EMBED_MODEL": "BAAI/bge-small-zh-v1.5"
+        }
+      }
+    }
+  },
+
+  "cursor": {
+    "_comment": "Add to: ~/.cursor/mcp.json  (global, applies to all projects)",
+    "mcpServers": {
+      "enterprise-rag": {
+        "command": "python",
+        "args": ["/ABSOLUTE/PATH/TO/rag_system/backend/mcp_server.py"],
+        "env": {
+          "DEEPSEEK_API_KEY": "sk-your-key-here"
+        }
+      }
+    }
+  },
+
+  "http_mode": {
+    "_comment": "For remote or multi-client access, run:  python backend/mcp_server.py --http --port 8001",
+    "mcpServers": {
+      "enterprise-rag": {
+        "url": "http://localhost:8001/mcp"
+      }
+    }
+  }
+}

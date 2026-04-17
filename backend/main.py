@@ -31,6 +31,7 @@ import hashlib
 import asyncio
 import logging
 import shutil
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -168,7 +169,12 @@ llm_client                           = None
 
 # ── FastAPI ───────────────────────────────────────────────────────────────────
 
-app = FastAPI(title="Adaptive RAG System", version="2.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await _startup()
+    yield
+
+app = FastAPI(title="Adaptive RAG System", version="2.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
@@ -685,8 +691,7 @@ async def llm_stream_answer(
 # Startup — build all indexes
 # ══════════════════════════════════════════════════════════════════════════════
 
-@app.on_event("startup")
-async def startup() -> None:
+async def _startup() -> None:
     global KNOWLEDGE_BASE, doc_embeddings
 
     raw_docs = load_documents_from_folder(DOCS_DIR)
@@ -1200,6 +1205,118 @@ def _iter_summary(iteration, query, strategy, top_score, reflected, results):
         "iteration": iteration, "query": query, "strategy": strategy,
         "top_score": round(top_score, 3), "reflected": reflected,
         "results": [{"id": r["id"], "title": r["title"], "score": round(r["final_score"], 3)} for r in results[:3]],
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Non-streaming RAG pipeline  (MCP / programmatic use)
+# ══════════════════════════════════════════════════════════════════════════════
+
+async def query_rag(
+    query: str,
+    strategy: str = "adaptive",
+    enable_hyde: bool = False,
+    enable_iterative: bool = True,
+    enable_rerank: bool = True,
+    top_k: int = 5,
+    confidence_threshold: float = 0.55,
+    language: str = "zh",
+) -> dict:
+    """
+    Full RAG pipeline without WebSocket streaming.
+    Returns a dict with keys: answer, docs, metrics, elapsed, iterations.
+    Used by mcp_server.py and any programmatic caller.
+    """
+    t0 = time.time()
+    current_query = query
+    iteration, max_iter = 0, 3
+    results: List[dict] = []
+
+    # ── HyDE pre-processing ───────────────────────────────────────────────
+    retrieval_text = current_query
+    if enable_hyde:
+        retrieval_text = await hyde_generate_hypothetical(current_query, language)
+
+    # ── Iterative Retrieval + Reflection ─────────────────────────────────
+    loop = asyncio.get_event_loop()
+    while iteration < max_iter:
+        iteration += 1
+        strat = strategy
+        if strat == "adaptive":
+            strat = ["hybrid", "vector", "bm25"][min(iteration - 1, 2)]
+
+        vec_text  = retrieval_text if (enable_hyde and iteration == 1) else current_query
+        emb_scores = await loop.run_in_executor(None, compute_embedding_scores, vec_text)
+        bm25_arr   = await loop.run_in_executor(None, compute_bm25_scores, current_query)
+
+        docs_scored = []
+        for idx, doc in enumerate(KNOWLEDGE_BASE):
+            d  = doc.copy()
+            es = float(emb_scores[idx])
+            bs = float(bm25_arr[idx])
+            if strat == "vector":
+                d.update(embedding_score=es, bm25_score=0.0, final_score=es)
+            elif strat == "bm25":
+                d.update(embedding_score=0.0, bm25_score=bs, final_score=bs)
+            else:
+                d.update(embedding_score=es, bm25_score=bs, final_score=es * 0.6 + bs * 0.4)
+            d["strategy_used"] = strat
+            docs_scored.append(d)
+
+        results   = sorted(docs_scored, key=lambda x: x["final_score"], reverse=True)[:top_k]
+        top_score = results[0]["final_score"] if results else 0.0
+
+        if enable_iterative and iteration < max_iter and top_score < confidence_threshold:
+            reason        = _diagnose_failure(top_score, confidence_threshold, language)
+            current_query = await llm_rewrite_query(current_query, reason, language)
+            retrieval_text = current_query
+            continue
+        break
+
+    # ── Reranking ─────────────────────────────────────────────────────────
+    if enable_rerank and results:
+        results = await loop.run_in_executor(None, _rerank_docs, query, results)
+
+    # ── Answer generation (non-streaming) ────────────────────────────────
+    doc_label = "文档" if language == "zh" else "Document"
+    context = "\n\n".join(
+        f"【{doc_label}{i + 1}】{d['title']}\n{d['content']}"
+        for i, d in enumerate(results[:4])
+    )
+    answer = ""
+    if llm_client:
+        answer = await llm_call(
+            messages=[
+                {"role": "system", "content": _t("sys_answer", language)},
+                {"role": "user",   "content": _t("usr_answer", language, context=context, query=query)},
+            ],
+            max_tokens=1500,
+            temperature=0.7,
+        )
+    elif results:
+        answer = results[0]["content"]
+
+    # ── RAGAS Evaluation ─────────────────────────────────────────────────
+    ragas = await loop.run_in_executor(None, compute_ragas_metrics, query, results[:4], answer)
+
+    final_docs = [
+        {
+            "id":     d["id"],
+            "title":  d["title"],
+            "content": d["content"][:300] + ("…" if len(d["content"]) > 300 else ""),
+            "source": d.get("source", ""),
+            "score":  round(d.get("ce_score", d["final_score"]), 3),
+        }
+        for d in results[:top_k]
+    ]
+
+    return {
+        "answer":     answer,
+        "docs":       final_docs,
+        "metrics":    ragas,
+        "elapsed":    round(time.time() - t0, 2),
+        "iterations": iteration,
+        "query":      query,
     }
 
 

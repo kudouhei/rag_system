@@ -260,6 +260,72 @@ curl -X POST http://localhost:8000/upload \
 
 ---
 
+## MCP Server — AI Tool Integration
+
+The knowledge base can be exposed as an **MCP (Model Context Protocol) server**, allowing Claude, Cursor, and any MCP-compatible AI client to search your internal documents directly, without opening a browser.
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `search_knowledge_base` | Full RAG pipeline — retrieve + rerank + LLM answer with citations |
+| `retrieve_documents` | Retrieval only — returns ranked raw chunks (no LLM) |
+| `list_documents` | List every indexed chunk to understand KB coverage |
+| `get_kb_stats` | System health: model info, doc count, LLM status |
+
+### Quick Start
+
+```bash
+# Install the MCP dependency
+pip install fastmcp
+
+# Run as stdio server (Claude Desktop / Cursor)
+python backend/mcp_server.py
+
+# Or run as HTTP server (remote / multi-client)
+python backend/mcp_server.py --http --port 8001
+```
+
+### Connect Claude Desktop
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "enterprise-rag": {
+      "command": "python",
+      "args": ["/absolute/path/to/rag_system/backend/mcp_server.py"],
+      "env": { "DEEPSEEK_API_KEY": "sk-your-key" }
+    }
+  }
+}
+```
+
+### Connect Cursor
+
+Add to `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "enterprise-rag": {
+      "command": "python",
+      "args": ["/absolute/path/to/rag_system/backend/mcp_server.py"],
+      "env": { "DEEPSEEK_API_KEY": "sk-your-key" }
+    }
+  }
+}
+```
+
+Once connected, Claude / Cursor Agent can call tools like:
+> *"使用企业知识库查询 RAG 系统的最佳实践"*  
+> → Automatically calls `search_knowledge_base` and cites sources in the reply.
+
+See `mcp_config_example.json` at the project root for all configuration options.
+
+---
+
 ## Benchmark Results
 
 | Configuration | Recall@10 (Natural Questions) |
