@@ -1,5 +1,26 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 
+// ── Backend API ───────────────────────────────────────────────────────────────
+// In dev, Vite proxies /stats, /upload, /ws, … to 127.0.0.1:8000 (see vite.config.js).
+// In production builds, call the API on localhost:8000 unless VITE_API_BASE is set.
+const API_BASE =
+  (typeof import.meta.env.VITE_API_BASE === "string" && import.meta.env.VITE_API_BASE.trim()) ||
+  (import.meta.env.DEV ? "" : "http://localhost:8000");
+
+function backendWsUrl(path) {
+  const custom = typeof import.meta.env.VITE_API_BASE === "string" && import.meta.env.VITE_API_BASE.trim();
+  if (custom) {
+    const u = custom.replace(/\/$/, "");
+    const wsOrigin = u.startsWith("https") ? u.replace(/^https/, "wss") : u.replace(/^http/, "ws");
+    return `${wsOrigin}${path}`;
+  }
+  if (import.meta.env.DEV) {
+    const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+    return `${scheme}://${window.location.host}${path}`;
+  }
+  return `ws://localhost:8000${path}`;
+}
+
 // ── Color palette ──────────────────────────────────────────────────────────────
 const C = {
   bg:           "#ffffff",
@@ -700,7 +721,7 @@ const DocsTab = ({ lang, kbStats, onRefresh }) => {
     try {
       const formData = new FormData();
       pendingFiles.forEach(f => formData.append("files", f));
-      const res  = await fetch("http://localhost:8000/upload", { method: "POST", body: formData });
+      const res  = await fetch(`${API_BASE}/upload`, { method: "POST", body: formData });
       const data = await res.json();
       const newSt = {};
       data.files.forEach(r => { newSt[r.filename] = r.status; });
@@ -724,7 +745,7 @@ const DocsTab = ({ lang, kbStats, onRefresh }) => {
     if (!window.confirm(tL(lang, "docsDeleteConfirm", filename))) return;
     setDeletingFile(filename);
     try {
-      await fetch(`http://localhost:8000/docs/${encodeURIComponent(filename)}`, { method: "DELETE" });
+      await fetch(`${API_BASE}/docs/${encodeURIComponent(filename)}`, { method: "DELETE" });
       setTimeout(() => { onRefresh(); setDeletingFile(null); }, 3500);
     } catch {
       setDeletingFile(null);
@@ -913,24 +934,49 @@ const DocsTab = ({ lang, kbStats, onRefresh }) => {
   );
 };
 
+// ── localStorage helpers ──────────────────────────────────────────────────────
+const LS_KEY = "rag_ui_state";
+
+const loadLS = () => {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; }
+};
+
+const usePersistedState = (key, defaultValue) => {
+  const [value, setValue] = useState(() => {
+    const saved = loadLS()[key];
+    return saved !== undefined ? saved : defaultValue;
+  });
+  const setPersisted = useCallback((v) => {
+    setValue(prev => {
+      const next = typeof v === "function" ? v(prev) : v;
+      try {
+        const current = loadLS();
+        localStorage.setItem(LS_KEY, JSON.stringify({ ...current, [key]: next }));
+      } catch { /* quota exceeded — silent */ }
+      return next;
+    });
+  }, [key]);
+  return [value, setPersisted];
+};
+
 // ══════════════════════════════════════════════════════════════════════════════
 // Main App
 // ══════════════════════════════════════════════════════════════════════════════
 export default function RAGDashboard() {
-  const [lang, setLang]                   = useState("zh");
+  const [lang, setLang]                   = usePersistedState("lang", "zh");
   const t = useCallback((key,...args)=>tL(lang,key,...args),[lang]);
 
   const [query, setQuery]                 = useState("企业知识库如何实现高效检索？");
-  const [strategy, setStrategy]           = useState("adaptive");
-  const [enableIterative, setEnableIterative] = useState(true);
-  const [enableRerank, setEnableRerank]   = useState(true);
-  const [enableHyde, setEnableHyde]       = useState(false);
-  const [enableConversation, setEnableConversation] = useState(false);
-  const [enableGraph, setEnableGraph]     = useState(false);
-  const [agentMode, setAgentMode]         = useState(false);
+  const [strategy, setStrategy]           = usePersistedState("strategy", "adaptive");
+  const [enableIterative, setEnableIterative] = usePersistedState("enableIterative", true);
+  const [enableRerank, setEnableRerank]   = usePersistedState("enableRerank", true);
+  const [enableHyde, setEnableHyde]       = usePersistedState("enableHyde", false);
+  const [enableConversation, setEnableConversation] = usePersistedState("enableConversation", false);
+  const [enableGraph, setEnableGraph]     = usePersistedState("enableGraph", false);
+  const [agentMode, setAgentMode]         = usePersistedState("agentMode", false);
   const [agentRoute, setAgentRoute]       = useState(null);   // {route, reason, ...}
   const [agentSubResults, setAgentSubResults] = useState([]);
-  const [threshold, setThreshold]         = useState(0.55);
+  const [threshold, setThreshold]         = usePersistedState("threshold", 0.55);
 
   const [status, setStatus]               = useState("idle");
   const [logs, setLogs]                   = useState([]);
@@ -940,7 +986,7 @@ export default function RAGDashboard() {
   const [iterations, setIterations]       = useState([]);
   const [elapsed, setElapsed]             = useState(null);
   const [hydeDoc, setHydeDoc]             = useState("");
-  const [conversationHistory, setConversationHistory] = useState([]);
+  const [conversationHistory, setConversationHistory] = usePersistedState("conversationHistory", []);
   const [activeTab, setActiveTab]         = useState("process");
 
   // Knowledge Base stats
@@ -960,7 +1006,7 @@ export default function RAGDashboard() {
   // Fetch KB stats on mount and after index rebuild
   const fetchKbStats = useCallback(async () => {
     try {
-      const res = await fetch("http://localhost:8000/stats");
+      const res = await fetch(`${API_BASE}/stats`);
       if (res.ok) setKbStats(await res.json());
     } catch { /* backend not running yet */ }
   }, []);
@@ -970,7 +1016,7 @@ export default function RAGDashboard() {
   const triggerRebuild = useCallback(async (force = false) => {
     setKbRebuilding(true);
     try {
-      await fetch(`http://localhost:8000/reload?force=${force}`, { method:"POST" });
+      await fetch(`${API_BASE}/reload?force=${force}`, { method:"POST" });
       // Poll until rebuild finishes (simple approach: wait 3s then refetch)
       setTimeout(() => { setKbRebuilding(false); fetchKbStats(); }, 4000);
     } catch { setKbRebuilding(false); }
@@ -981,7 +1027,7 @@ export default function RAGDashboard() {
     if (feedbackGiven || feedbackLoading) return;
     setFeedbackLoading(true);
     try {
-      await fetch("http://localhost:8000/feedback", {
+      await fetch(`${API_BASE}/feedback`, {
         method: "POST",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({
@@ -1047,8 +1093,7 @@ export default function RAGDashboard() {
     setFeedbackGiven(null); setFeedbackComment("");
     setAgentRoute(null); setAgentSubResults([]);
 
-    const wsUrl = agentMode ? "ws://localhost:8000/ws/agent" : "ws://localhost:8000/ws/query";
-    const ws=new WebSocket(wsUrl);
+    const ws = new WebSocket(backendWsUrl(agentMode ? "/ws/agent" : "/ws/query"));
     wsRef.current=ws;
     ws.onopen=()=>ws.send(JSON.stringify({
       query, strategy,
@@ -1064,7 +1109,9 @@ export default function RAGDashboard() {
     ws.onmessage=handleMessage;
     ws.onerror=()=>{
       setStatus("error");
-      setLogs(p=>[...p,{type:"error",message:lang==="en"?"WebSocket connection failed. Ensure the backend is running on localhost:8000.":"WebSocket 连接失败，请确保后端服务运行在 localhost:8000"}]);
+      setLogs(p=>[...p,{type:"error",message:lang==="en"
+        ? "WebSocket failed: start the API on port 8000 (e.g. ./start.sh or: cd backend && python3 main.py)."
+        : "WebSocket 无法连接：请先启动后端（监听 8000 端口）。可在项目根目录执行 ./start.sh，或：cd backend && python3 main.py"}]);
     };
     ws.onclose=()=>{ if(status==="running") setStatus("done"); };
   },[query,strategy,enableIterative,enableRerank,enableHyde,enableGraph,enableConversation,agentMode,threshold,status,lang,conversationHistory,handleMessage]);
