@@ -37,6 +37,8 @@ import hashlib
 import asyncio
 import logging
 import shutil
+import re
+import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -52,6 +54,46 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
+
+# ── Enterprise-style audit & feedback (JSONL) ──────────────────────────────────
+BASE_DIR = Path(__file__).resolve().parent
+AUDIT_FILE = BASE_DIR / "audit.jsonl"
+FEEDBACK_FILE = BASE_DIR / "feedback.jsonl"
+_jsonl_lock = threading.Lock()
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _append_jsonl(path: Path, obj: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(obj, ensure_ascii=False)
+    with _jsonl_lock:
+        with path.open("a", encoding="utf-8") as f:
+            f.write(line + "\n")
+
+
+_REDACT_PATTERNS = [
+    # Email
+    (re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I), "[REDACTED_EMAIL]"),
+    # Bearer tokens / API keys (very rough)
+    (re.compile(r"\bBearer\s+[A-Za-z0-9._-]{16,}\b"), "Bearer [REDACTED_TOKEN]"),
+    (re.compile(r"\bsk-[A-Za-z0-9]{16,}\b"), "[REDACTED_API_KEY]"),
+    # IBAN (Luxembourg starts with LU; keep generic)
+    (re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b"), "[REDACTED_IBAN]"),
+    # Long digit sequences (cards / account ids)
+    (re.compile(r"\b\d{12,19}\b"), "[REDACTED_NUMBER]"),
+]
+
+
+def redact_text(s: Optional[str]) -> Optional[str]:
+    if s is None:
+        return None
+    out = s
+    for rx, repl in _REDACT_PATTERNS:
+        out = rx.sub(repl, out)
+    return out
 
 # ── Bilingual message table ────────────────────────────────────────────────────
 # All user-facing strings are defined here so the pipeline is language-agnostic.
@@ -966,6 +1008,14 @@ class ConversationTurn(BaseModel):
 
 class QueryRequest(BaseModel):
     query: str
+    # Enterprise context (optional)
+    tenant_id: Optional[str] = None
+    user_id: Optional[str] = None
+    user_role: Optional[str] = None
+    ticket_id: Optional[str] = None
+    product: Optional[str] = None
+    version: Optional[str] = None
+    environment: Optional[str] = None
     strategy: str = "adaptive"          # vector | bm25 | hybrid | adaptive
     enable_iterative: bool = True
     enable_rerank: bool = True
@@ -975,6 +1025,18 @@ class QueryRequest(BaseModel):
     top_k: int = 5
     language: str = "zh"               # "zh" | "en"
     history: List[ConversationTurn] = []
+
+
+class FeedbackRequest(BaseModel):
+    query: str
+    answer: str
+    rating: int                      # 1 | -1
+    comment: Optional[str] = None
+    doc_ids: List[str] = []
+    language: Optional[str] = "zh"
+    tenant_id: Optional[str] = None
+    user_id: Optional[str] = None
+    user_role: Optional[str] = None
 
 # ══════════════════════════════════════════════════════════════════════════════
 # WebSocket — streaming RAG pipeline
@@ -987,6 +1049,24 @@ async def websocket_query(websocket: WebSocket) -> None:
         while True:
             data = await websocket.receive_text()
             request = QueryRequest(**json.loads(data))
+            _append_jsonl(AUDIT_FILE, {
+                "ts": _utc_now_iso(),
+                "type": "ws_query",
+                "client": getattr(websocket, "client", None).host if getattr(websocket, "client", None) else None,
+                "tenant_id": request.tenant_id,
+                "user_id": request.user_id,
+                "user_role": request.user_role,
+                "ticket_id": request.ticket_id,
+                "product": request.product,
+                "version": request.version,
+                "environment": request.environment,
+                "query": redact_text(request.query),
+                "strategy": request.strategy,
+                "enable_iterative": request.enable_iterative,
+                "enable_rerank": request.enable_rerank,
+                "enable_hyde": request.enable_hyde,
+                "enable_graph": request.enable_graph,
+            })
             await run_rag_pipeline(websocket, request)
     except WebSocketDisconnect:
         pass
@@ -1006,6 +1086,19 @@ async def websocket_agent(websocket: WebSocket) -> None:
         while True:
             data    = await websocket.receive_text()
             request = QueryRequest(**json.loads(data))
+            _append_jsonl(AUDIT_FILE, {
+                "ts": _utc_now_iso(),
+                "type": "ws_agent",
+                "client": getattr(websocket, "client", None).host if getattr(websocket, "client", None) else None,
+                "tenant_id": request.tenant_id,
+                "user_id": request.user_id,
+                "user_role": request.user_role,
+                "ticket_id": request.ticket_id,
+                "product": request.product,
+                "version": request.version,
+                "environment": request.environment,
+                "query": redact_text(request.query),
+            })
             await run_agentic_pipeline(websocket, request)
     except WebSocketDisconnect:
         pass
@@ -1020,7 +1113,26 @@ async def websocket_agent(websocket: WebSocket) -> None:
 async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
     t0   = time.time()
     lang = req.language or "zh"
-    current_query = req.query
+
+    # ── Enterprise context → retrieval augmentation ───────────────────────────
+    # In real deployments, ticket/product/version/env strongly disambiguate the intent.
+    # We incorporate them as light-weight query augmentation (safe, no extra calls).
+    def _augment_query(q: str) -> str:
+        parts = []
+        if req.product:
+            parts.append(f"product={req.product}")
+        if req.version:
+            parts.append(f"version={req.version}")
+        if req.environment:
+            parts.append(f"env={req.environment}")
+        if req.ticket_id:
+            parts.append(f"ticket={req.ticket_id}")
+        if not parts:
+            return q
+        prefix = " ".join(parts)
+        return f"[{prefix}] {q}"
+
+    current_query = _augment_query(req.query)
     iteration, max_iter = 0, 3
     all_iterations: List[dict] = []
     results: List[dict] = []
@@ -1039,6 +1151,14 @@ async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
             "cross_encoder":    cross_encoder is not None,
             "graph_nodes":      len(KNOWLEDGE_GRAPH["nodes"]),
             "language":         lang,
+            # Enterprise context (for audit & evaluation stratification)
+            "tenant_id":        req.tenant_id,
+            "user_id":          req.user_id,
+            "user_role":        req.user_role,
+            "ticket_id":        req.ticket_id,
+            "product":          req.product,
+            "version":          req.version,
+            "environment":      req.environment,
         },
     }))
 
@@ -1282,6 +1402,26 @@ async def get_stats():
             if src and src not in stale_sources:
                 stale_sources.append(src)
 
+    # Feedback summary (if enabled)
+    fb_total = 0
+    fb_pos = 0
+    if FEEDBACK_FILE.exists():
+        try:
+            with FEEDBACK_FILE.open("r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                        fb_total += 1
+                        if int(obj.get("rating", 0)) > 0:
+                            fb_pos += 1
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
     return {
         "total_chunks":          len(KNOWLEDGE_BASE),
         "total_sources":         len(sources),
@@ -1289,7 +1429,33 @@ async def get_stats():
         "contextual_chunking":   CONTEXTUAL_CHUNKING,
         "sources": sorted(sources.values(), key=lambda x: x["source"]),
         "stale_sources":         stale_sources,      # not updated in 90+ days
+        "feedback": {
+            "total": fb_total,
+            "positive": fb_pos,
+            "satisfaction_rate": (fb_pos / fb_total) if fb_total else 0.0,
+        },
     }
+
+
+@app.post("/feedback")
+async def feedback(req: FeedbackRequest):
+    if req.rating not in (-1, 1):
+        raise HTTPException(400, "rating must be 1 or -1")
+
+    _append_jsonl(FEEDBACK_FILE, {
+        "ts": _utc_now_iso(),
+        "tenant_id": req.tenant_id,
+        "user_id": req.user_id,
+        "user_role": req.user_role,
+        "language": req.language,
+        "rating": req.rating,
+        "doc_ids": req.doc_ids or [],
+        "comment": redact_text(req.comment),
+        # Store redacted content only (avoid accidental PII persistence)
+        "query": redact_text(req.query),
+        "answer": redact_text(req.answer),
+    })
+    return {"status": "ok"}
 
 
 @app.get("/graph")
