@@ -1018,6 +1018,7 @@ class QueryRequest(BaseModel):
     environment: Optional[str] = None
     strategy: str = "adaptive"          # vector | bm25 | hybrid | adaptive
     enable_iterative: bool = True
+    # Deprecated: reranking is now auto-enabled when a cross-encoder model is configured.
     enable_rerank: bool = True
     enable_hyde: bool = False           # HyDE (Gao et al., EMNLP 2022)
     enable_graph: bool = False          # ⑩ GraphRAG knowledge-graph lane
@@ -1063,7 +1064,6 @@ async def websocket_query(websocket: WebSocket) -> None:
                 "query": redact_text(request.query),
                 "strategy": request.strategy,
                 "enable_iterative": request.enable_iterative,
-                "enable_rerank": request.enable_rerank,
                 "enable_hyde": request.enable_hyde,
                 "enable_graph": request.enable_graph,
             })
@@ -1143,7 +1143,6 @@ async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
         "config": {
             "strategy":         req.strategy,
             "enable_iterative": req.enable_iterative,
-            "enable_rerank":    req.enable_rerank,
             "enable_hyde":      req.enable_hyde,
             "enable_graph":     req.enable_graph,
             "threshold":        req.confidence_threshold,
@@ -1270,7 +1269,8 @@ async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
         break
 
     # ── Phase 3: Reranking ────────────────────────────────────────────────────
-    if req.enable_rerank and results:
+    # Reranking is automatically enabled when a cross-encoder model is configured.
+    if cross_encoder is not None and results:
         ce_pfx = _t("ce_label", lang) if cross_encoder else ""
         await ws.send_text(json.dumps({
             "type": "phase_start", "phase": "reranking",
@@ -2028,7 +2028,6 @@ async def query_rag(
     strategy: str = "adaptive",
     enable_hyde: bool = False,
     enable_iterative: bool = True,
-    enable_rerank: bool = True,
     enable_graph: bool = False,
     top_k: int = 5,
     confidence_threshold: float = 0.55,
@@ -2091,7 +2090,8 @@ async def query_rag(
         break
 
     # ── Reranking ─────────────────────────────────────────────────────────
-    if enable_rerank and results:
+    # Reranking is automatically enabled when a cross-encoder model is configured.
+    if cross_encoder is not None and results:
         results = await loop.run_in_executor(None, _rerank_docs, query, results)
 
     # ── Answer generation (non-streaming) ────────────────────────────────

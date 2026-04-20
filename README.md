@@ -129,6 +129,7 @@ DEEPSEEK_MODEL=deepseek-chat
 EMBED_MODEL=BAAI/bge-small-zh-v1.5
 
 # Optional: real Cross-Encoder reranking (~280 MB)
+# If set, the backend will auto-enable reranking (no frontend toggle).
 # RERANKER_MODEL=BAAI/bge-reranker-base
 
 # Document folder (default: backend/docs/)
@@ -215,7 +216,6 @@ metrics = {
   "query": "如何实现高效的企业知识检索？",
   "strategy": "adaptive",
   "enable_iterative": true,
-  "enable_rerank": true,
   "enable_hyde": false,
   "confidence_threshold": 0.55,
   "top_k": 5,
@@ -225,6 +225,9 @@ metrics = {
   ]
 }
 ```
+
+Notes:
+- Reranking is **automatic**: it runs only when `RERANKER_MODEL` is configured on the backend.
 
 **Streaming event types:**
 

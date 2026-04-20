@@ -110,7 +110,6 @@ async def search_knowledge_base(
         strategy=strategy,
         enable_hyde=enable_hyde,
         enable_iterative=True,
-        enable_rerank=True,
         top_k=top_k,
         language=language,
     )
@@ -172,7 +171,6 @@ async def retrieve_documents(
         strategy=strategy,
         enable_hyde=False,
         enable_iterative=False,
-        enable_rerank=True,
         top_k=top_k,
         language="zh",
     )

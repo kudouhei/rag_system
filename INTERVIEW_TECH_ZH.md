@@ -607,6 +607,9 @@ def diagnose(top_score: float, threshold: float) -> str:
 
 ## 7. 交叉编码器精排
 
+> 工程实现说明（与本项目代码一致）：**精排不再作为前端配置项**暴露。  
+> 当后端环境变量设置 `RERANKER_MODEL=BAAI/bge-reranker-*` 且模型加载成功时，系统会**自动启用 Cross-Encoder 精排**；否则自动跳过（使用余弦相似度的排序作为 fallback）。
+
 ### 7.1 两阶段检索的必要性
 
 全量文档精排的时间复杂度分析：

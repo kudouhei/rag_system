@@ -51,11 +51,9 @@ const I18N = {
     strategyLabel:      "检索策略",
     strategies:         { adaptive:"自适应", hybrid:"混合", vector:"向量", bm25:"BM25" },
     toggle_iterative:   "迭代检索",
-    toggle_rerank:      "精排 Rerank",
     toggle_hyde:        "HyDE 增强",
     toggle_conv:        "对话模式",
     tip_iterative:      "ReAct 风格的反思式迭代检索 (Yao et al., 2022)",
-    tip_rerank:         "Cross-Encoder 精排（BAAI/bge-reranker）",
     tip_hyde:           "Hypothetical Document Embeddings (Gao et al., EMNLP 2022)",
     tip_conv:           "多轮对话：保留历史上下文",
     thresholdLabel:     "置信度阈值",
@@ -209,11 +207,9 @@ const I18N = {
     strategyLabel:      "Retrieval Strategy",
     strategies:         { adaptive:"Adaptive", hybrid:"Hybrid", vector:"Vector", bm25:"BM25" },
     toggle_iterative:   "Iterative",
-    toggle_rerank:      "Reranking",
     toggle_hyde:        "HyDE",
     toggle_conv:        "Chat Mode",
     tip_iterative:      "ReAct-style reflective iterative retrieval (Yao et al., 2022)",
-    tip_rerank:         "Cross-Encoder reranking (BAAI/bge-reranker)",
     tip_hyde:           "Hypothetical Document Embeddings (Gao et al., EMNLP 2022)",
     tip_conv:           "Multi-turn conversation: retain context across queries",
     thresholdLabel:     "Confidence Threshold",
@@ -1082,7 +1078,6 @@ export default function RAGDashboard() {
   const [query, setQuery]                 = useState("企业知识库如何实现高效检索？");
   const [strategy, setStrategy]           = usePersistedState("strategy", "adaptive");
   const [enableIterative, setEnableIterative] = usePersistedState("enableIterative", true);
-  const [enableRerank, setEnableRerank]   = usePersistedState("enableRerank", true);
   const [enableHyde, setEnableHyde]       = usePersistedState("enableHyde", false);
   const [enableConversation, setEnableConversation] = usePersistedState("enableConversation", false);
   const [enableGraph, setEnableGraph]     = usePersistedState("enableGraph", false);
@@ -1238,7 +1233,6 @@ export default function RAGDashboard() {
     ws.onopen=()=>ws.send(JSON.stringify({
       query, strategy,
       enable_iterative:     enableIterative,
-      enable_rerank:        enableRerank,
       enable_hyde:          enableHyde,
       enable_graph:         enableGraph,
       confidence_threshold: threshold,
@@ -1254,7 +1248,7 @@ export default function RAGDashboard() {
         : "WebSocket 无法连接：请先启动后端（监听 8000 端口）。可在项目根目录执行 ./start.sh，或：cd backend && python3 main.py"}]);
     };
     ws.onclose=()=>{ if(status==="running") setStatus("done"); };
-  },[backendReady,query,strategy,enableIterative,enableRerank,enableHyde,enableGraph,enableConversation,agentMode,threshold,status,lang,conversationHistory,handleMessage]);
+  },[backendReady,query,strategy,enableIterative,enableHyde,enableGraph,enableConversation,agentMode,threshold,status,lang,conversationHistory,handleMessage]);
 
   const handleKeyDown=(e)=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();runQuery();} };
 
@@ -1466,7 +1460,6 @@ export default function RAGDashboard() {
               }}>{lang==="zh" ? "检索增强" : "Enhancements"}</div>
               <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:6}}>
                 <ToggleBtn labelKey="toggle_iterative" val={enableIterative} onToggle={()=>setEnableIterative(!enableIterative)} color={C.accent}  tipKey="tip_iterative"/>
-                <ToggleBtn labelKey="toggle_rerank"    val={enableRerank}    onToggle={()=>setEnableRerank(!enableRerank)}       color={C.purple} tipKey="tip_rerank"/>
                 <ToggleBtn labelKey="toggle_hyde"      val={enableHyde}      onToggle={()=>setEnableHyde(!enableHyde)}           color={C.teal}   tipKey="tip_hyde"/>
                 <ToggleBtn labelKey="toggle_graph"     val={enableGraph}     onToggle={()=>setEnableGraph(!enableGraph)}         color="#059669"  tipKey="tip_graph"/>
               </div>
