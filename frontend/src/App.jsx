@@ -63,6 +63,8 @@ const I18N = {
     clearBtn:           "清空",
     runBtn:             "⚡ 执行检索",
     runningBtn:         "检索中…",
+    backendOffline:     "后端未就绪：请先启动后端并等待其完成初始化（Embedding/索引加载）。",
+    backendOnline:      "后端已就绪",
     stat_elapsed:       "耗时",
     stat_iters:         "迭代轮次",
     stat_docs:          "召回文档",
@@ -219,6 +221,8 @@ const I18N = {
     clearBtn:           "Clear",
     runBtn:             "⚡ Run Retrieval",
     runningBtn:         "Retrieving…",
+    backendOffline:     "Backend not ready. Start the API and wait for initialization (embeddings/index).",
+    backendOnline:      "Backend ready",
     stat_elapsed:       "Elapsed",
     stat_iters:         "Iterations",
     stat_docs:          "Docs",
@@ -538,7 +542,7 @@ const RagasPanel = ({ metrics, lang }) => {
     <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:8, padding:16}}>
       <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16}}>
         <span style={{fontSize:11, color:C.textMid, fontWeight:700, letterSpacing:"0.08em"}}>
-          {tL(lang,"ragasTitle")}&nbsp;<span style={{fontSize:10,color:C.textDim}}>(Es et al., 2023)</span>
+          {tL(lang,"ragasTitle")}&nbsp;
         </span>
         <span style={{fontSize:13, fontWeight:800, color:overall>0.75?C.green:overall>0.55?C.accent:C.orange}}>
           {tL(lang,"ragasOverall",(overall*100).toFixed(1))}
@@ -994,6 +998,9 @@ export default function RAGDashboard() {
   const [kbLoading, setKbLoading]         = useState(false);
   const [kbRebuilding, setKbRebuilding]   = useState(false);
 
+  // Backend readiness (prevents WS attempts while the API is still starting)
+  const [backendReady, setBackendReady]   = useState(false);
+
   // Answer feedback
   const [feedbackGiven, setFeedbackGiven] = useState(null);   // "pos" | "neg" | null
   const [feedbackLoading, setFeedbackLoading] = useState(false);
@@ -1012,6 +1019,23 @@ export default function RAGDashboard() {
   }, []);
 
   useEffect(() => { fetchKbStats(); }, [fetchKbStats]);
+
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/health`, { method: "GET" });
+        if (!alive) return;
+        setBackendReady(res.ok);
+      } catch {
+        if (!alive) return;
+        setBackendReady(false);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 2000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
 
   const triggerRebuild = useCallback(async (force = false) => {
     setKbRebuilding(true);
@@ -1085,6 +1109,13 @@ export default function RAGDashboard() {
   },[]);
 
   const runQuery = useCallback(()=>{
+    if (!backendReady) {
+      setStatus("error");
+      setLogs(p=>[...p,{type:"error",message:lang==="en"
+        ? "Backend not ready yet. Start the API on port 8000 and wait for it to finish initialization."
+        : "后端尚未就绪。请先启动后端（8000 端口）并等待初始化完成后再执行。"}]);
+      return;
+    }
     if (!query.trim()||status==="running") return;
     submittedQueryRef.current=query;
     setStatus("running"); setLogs([]); setDocs([]); setAnswer("");
@@ -1114,7 +1145,7 @@ export default function RAGDashboard() {
         : "WebSocket 无法连接：请先启动后端（监听 8000 端口）。可在项目根目录执行 ./start.sh，或：cd backend && python3 main.py"}]);
     };
     ws.onclose=()=>{ if(status==="running") setStatus("done"); };
-  },[query,strategy,enableIterative,enableRerank,enableHyde,enableGraph,enableConversation,agentMode,threshold,status,lang,conversationHistory,handleMessage]);
+  },[backendReady,query,strategy,enableIterative,enableRerank,enableHyde,enableGraph,enableConversation,agentMode,threshold,status,lang,conversationHistory,handleMessage]);
 
   const handleKeyDown=(e)=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();runQuery();} };
 
@@ -1213,6 +1244,27 @@ export default function RAGDashboard() {
 
         {/* ══ LEFT PANEL ══ */}
         <div style={{display:"flex", flexDirection:"column", gap:12}}>
+
+          {/* Backend status */}
+          <div style={{
+            background: backendReady ? `${C.green}08` : `${C.orange}08`,
+            border: `1px solid ${backendReady ? C.green+"33" : C.orange+"33"}`,
+            borderRadius: 10,
+            padding: "10px 12px",
+            fontSize: 12,
+            color: backendReady ? C.green : C.orange,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+          }}>
+            <span style={{fontWeight:700}}>
+              {backendReady ? `✓ ${t("backendOnline")}` : `⚠ ${t("backendOffline")}`}
+            </span>
+            <span style={{fontFamily:"monospace", fontSize:11, color:C.textDim}}>
+              {API_BASE || window.location.origin}
+            </span>
+          </div>
 
           {/* Query Input */}
           <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:10, padding:16}}>
@@ -1326,9 +1378,9 @@ export default function RAGDashboard() {
           </div>
 
           {/* Run Button */}
-          <button onClick={runQuery} disabled={status==="running"} style={{
+          <button onClick={runQuery} disabled={status==="running" || !backendReady} style={{
             padding:"12px 20px", borderRadius:8, fontSize:13, fontWeight:800,
-            cursor: status==="running"?"not-allowed":"pointer",
+            cursor: (status==="running" || !backendReady) ? "not-allowed" : "pointer",
             background: status==="running"?`${C.accent}18`:`linear-gradient(135deg,${C.accentDim},${C.accent})`,
             color: status==="running"?C.accentDim:"#fff",
             border:"none", letterSpacing:"0.04em", fontFamily:"inherit",
