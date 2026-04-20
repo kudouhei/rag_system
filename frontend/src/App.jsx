@@ -694,6 +694,11 @@ const DocsTab = ({ lang, kbStats, onRefresh }) => {
   const [uploadMsg,    setUploadMsg]    = useState("");    // summary after upload
   const [isDragging,   setIsDragging]   = useState(false);
   const [deletingFile, setDeletingFile] = useState(null); // filename being deleted
+  const [previewOpen,  setPreviewOpen]  = useState(false);
+  const [previewSrc,   setPreviewSrc]   = useState(null);
+  const [previewData,  setPreviewData]  = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewErr,   setPreviewErr]   = useState("");
   const inputRef = useRef(null);
 
   const addFiles = (rawFiles) => {
@@ -756,6 +761,31 @@ const DocsTab = ({ lang, kbStats, onRefresh }) => {
     }
   };
 
+  const openPreview = async (source) => {
+    setPreviewOpen(true);
+    setPreviewSrc(source);
+    setPreviewData(null);
+    setPreviewErr("");
+    setPreviewLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/docs/preview?source=${encodeURIComponent(source)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setPreviewData(await res.json());
+    } catch (e) {
+      setPreviewErr(lang === "en" ? `Preview failed: ${String(e)}` : `预览失败：${String(e)}`);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const closePreview = () => {
+    setPreviewOpen(false);
+    setPreviewSrc(null);
+    setPreviewData(null);
+    setPreviewErr("");
+    setPreviewLoading(false);
+  };
+
   const fmtSize = (bytes) =>
     bytes >= 1024*1024 ? `${(bytes/1024/1024).toFixed(1)} MB`
     : bytes >= 1024    ? `${(bytes/1024).toFixed(1)} KB`
@@ -771,6 +801,73 @@ const DocsTab = ({ lang, kbStats, onRefresh }) => {
 
   return (
     <div style={{display:"flex", flexDirection:"column", gap:16}}>
+
+      {/* ── Preview Modal ── */}
+      {previewOpen && (
+        <div onClick={closePreview} style={{
+          position:"fixed", inset:0, background:"rgba(15,23,42,0.55)",
+          display:"flex", alignItems:"center", justifyContent:"center",
+          padding:20, zIndex: 9999,
+        }}>
+          <div onClick={(e)=>e.stopPropagation()} style={{
+            width:"min(920px, 96vw)", maxHeight:"86vh",
+            background:C.bg, borderRadius:12,
+            border:`1px solid ${C.borderBright}`,
+            boxShadow:"0 20px 60px rgba(0,0,0,0.25)",
+            display:"flex", flexDirection:"column", overflow:"hidden",
+          }}>
+            <div style={{
+              padding:"12px 14px", borderBottom:`1px solid ${C.border}`,
+              display:"flex", alignItems:"center", justifyContent:"space-between", gap:10,
+            }}>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:12, fontWeight:800, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>
+                  {previewData?.source || previewSrc || (lang==="en" ? "Preview" : "预览")}
+                </div>
+                {previewData && (
+                  <div style={{fontSize:11, color:C.textDim, marginTop:2}}>
+                    {previewData.file_size_kb ? `${previewData.file_size_kb} KB · ` : ""}{previewData.total_chunks} chunk(s)
+                    {previewData.file_mtime ? ` · ${new Date(previewData.file_mtime).toLocaleString()}` : ""}
+                    {previewData.truncated ? (lang==="en" ? " · truncated" : " · 已截断") : ""}
+                  </div>
+                )}
+              </div>
+              <button onClick={closePreview} style={{
+                border:`1px solid ${C.border}`, background:"transparent",
+                borderRadius:6, padding:"6px 10px", cursor:"pointer",
+                color:C.textMid, fontSize:12, fontWeight:700, fontFamily:"inherit",
+              }}>{lang==="en" ? "Close" : "关闭"}</button>
+            </div>
+
+            <div style={{padding:14, overflow:"auto"}}>
+              {previewLoading && (
+                <div style={{display:"flex", alignItems:"center", gap:8, color:C.textMid, fontSize:12}}>
+                  <Spinner size={14} color={C.accent}/> {lang==="en" ? "Loading preview…" : "加载预览中…"}
+                </div>
+              )}
+              {previewErr && (
+                <div style={{
+                  background:`${C.red}10`, border:`1px solid ${C.red}33`, color:C.red,
+                  borderRadius:8, padding:"10px 12px", fontSize:12, marginBottom:10,
+                }}>{previewErr}</div>
+              )}
+              {previewData?.preview_text && (
+                <pre style={{
+                  whiteSpace:"pre-wrap", wordBreak:"break-word",
+                  margin:0, fontSize:12.5, lineHeight:1.7, color:C.text,
+                  background:C.surface, border:`1px solid ${C.borderBright}`,
+                  borderRadius:10, padding:12,
+                }}>{previewData.preview_text}</pre>
+              )}
+              {previewData && !previewData.preview_text && !previewLoading && !previewErr && (
+                <div style={{color:C.textDim, fontSize:12}}>
+                  {lang==="en" ? "No preview text available." : "暂无可预览内容。"}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Upload Zone ── */}
       <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:10, padding:16}}>
@@ -910,19 +1007,31 @@ const DocsTab = ({ lang, kbStats, onRefresh }) => {
                   </div>
 
                   {/* Delete button */}
-                  <button
-                    onClick={() => deleteDoc(src.source)}
-                    disabled={isDeleting}
-                    style={{
-                      flexShrink:0, padding:"3px 9px", borderRadius:4,
-                      fontSize:11, cursor: isDeleting ? "not-allowed" : "pointer",
-                      background:"transparent", color: isDeleting ? C.textDim : C.red,
-                      border:`1px solid ${isDeleting ? C.border : C.red+"44"}`,
-                      fontFamily:"inherit",
-                    }}
-                  >
-                    {isDeleting ? tL(lang,"docsDeleting") : tL(lang,"docsDeleteBtn")}
-                  </button>
+                  <div style={{display:"flex", gap:6, alignItems:"center", flexShrink:0}}>
+                    <button
+                      onClick={() => openPreview(src.source)}
+                      style={{
+                        padding:"3px 9px", borderRadius:4, fontSize:11,
+                        cursor:"pointer", background:"transparent", color:C.accent,
+                        border:`1px solid ${C.accent}33`, fontFamily:"inherit",
+                      }}
+                    >
+                      {lang==="en" ? "Preview" : "预览"}
+                    </button>
+                    <button
+                      onClick={() => deleteDoc(src.source)}
+                      disabled={isDeleting}
+                      style={{
+                        padding:"3px 9px", borderRadius:4,
+                        fontSize:11, cursor: isDeleting ? "not-allowed" : "pointer",
+                        background:"transparent", color: isDeleting ? C.textDim : C.red,
+                        border:`1px solid ${isDeleting ? C.border : C.red+"44"}`,
+                        fontFamily:"inherit",
+                      }}
+                    >
+                      {isDeleting ? tL(lang,"docsDeleting") : tL(lang,"docsDeleteBtn")}
+                    </button>
+                  </div>
                 </div>
               );
             })}

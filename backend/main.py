@@ -1492,6 +1492,68 @@ async def docs_list():
     ]
 
 
+@app.get("/docs/preview")
+async def preview_doc(source: str, max_chars: int = 6000):
+    """
+    Preview a knowledge base file by its `source` (relative filename under DOCS_DIR).
+    Returns chunk metadata and a text preview assembled from the indexed chunks.
+    """
+    if not source:
+        raise HTTPException(400, "source is required")
+    # Basic traversal guard (source is always relative paths in our index)
+    if ".." in source or source.startswith(("/", "\\")):
+        raise HTTPException(400, "Invalid source")
+
+    chunks = [d for d in KNOWLEDGE_BASE if d.get("source") == source]
+    if not chunks:
+        raise HTTPException(404, f"Not found: {source}")
+
+    chunks_sorted = sorted(chunks, key=lambda d: int(d.get("chunk_index", 0)))
+    total_chunks = int(chunks_sorted[0].get("total_chunks", len(chunks_sorted)))
+    file_mtime = chunks_sorted[0].get("file_mtime", "")
+    file_size_kb = chunks_sorted[0].get("file_size_kb", 0)
+    tags = chunks_sorted[0].get("tags", [])
+
+    # Assemble a preview from chunk contents
+    preview_parts = []
+    used = 0
+    for c in chunks_sorted:
+        txt = c.get("content", "")
+        if not txt:
+            continue
+        remain = max_chars - used
+        if remain <= 0:
+            break
+        piece = txt[:remain]
+        preview_parts.append(piece)
+        used += len(piece)
+
+    preview_text = ("\n\n---\n\n".join(preview_parts)).strip()
+    truncated = used >= max_chars
+
+    return {
+        "source": source,
+        "title": Path(source).stem,
+        "tags": tags,
+        "file_mtime": file_mtime,
+        "file_size_kb": file_size_kb,
+        "total_chunks": total_chunks,
+        "chunks": [
+            {
+                "id": c.get("id"),
+                "title": c.get("title"),
+                "chunk_index": c.get("chunk_index"),
+                "char_count": c.get("char_count"),
+                "word_count": c.get("word_count"),
+            }
+            for c in chunks_sorted
+        ],
+        "preview_text": preview_text,
+        "truncated": truncated,
+        "max_chars": max_chars,
+    }
+
+
 @app.post("/upload")
 async def upload_documents(files: List[UploadFile] = File(...)):
     """
