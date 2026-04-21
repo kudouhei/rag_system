@@ -1099,7 +1099,6 @@ export default function RAGDashboard() {
 
   // Knowledge Base stats
   const [kbStats, setKbStats]             = useState(null);
-  const [kbLoading, setKbLoading]         = useState(false);
   const [kbRebuilding, setKbRebuilding]   = useState(false);
 
   // Backend readiness (prevents WS attempts while the API is still starting)

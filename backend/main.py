@@ -36,7 +36,6 @@ import time
 import hashlib
 import asyncio
 import logging
-import shutil
 import re
 import threading
 from contextlib import asynccontextmanager
