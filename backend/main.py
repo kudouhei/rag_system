@@ -1018,8 +1018,6 @@ class QueryRequest(BaseModel):
     environment: Optional[str] = None
     strategy: str = "adaptive"          # vector | bm25 | hybrid | adaptive
     enable_iterative: bool = True
-    # Deprecated: reranking is now auto-enabled when a cross-encoder model is configured.
-    enable_rerank: bool = True
     enable_hyde: bool = False           # HyDE (Gao et al., EMNLP 2022)
     enable_graph: bool = False          # ⑩ GraphRAG knowledge-graph lane
     confidence_threshold: float = 0.55
