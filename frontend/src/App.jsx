@@ -1330,12 +1330,6 @@ export default function RAGDashboard() {
           </div>
 
           <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
-            {[
-              {label:"HyDE (EMNLP'22)", color:C.teal  },
-              {label:"RAGAS (2023)",    color:C.purple },
-              {label:"Cross-Encoder",  color:C.accent },
-              {label:t("badge_conv"),  color:C.green  },
-            ].map(b=><Tag key={b.label} label={b.label} color={b.color}/>)}
             {enableGraph && <Tag label={t("badge_graph")} color="#059669"/>}
             {agentMode && <Tag label={t("badge_agent")} color={C.orange}/>}
           </div>
