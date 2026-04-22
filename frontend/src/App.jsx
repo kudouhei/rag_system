@@ -155,10 +155,12 @@ const I18N = {
     docsDeleting:       "删除中…",
     docsRebuildNotice:  "上传/删除后将自动重建索引，请稍等",
     sampleQueries: [
-      "企业知识库如何实现高效检索？",
-      "HyDE 假设文档嵌入的原理是什么？",
-      "如何评估 RAG 系统的召回率？",
-      "交叉编码器重排序的优势在哪里？",
+      "忘记 SSO 密码或 MFA 丢失怎么办？需要提交什么工单？",
+      "VPN 连上了但访问不了内网系统，怎么排查（DNS/权限组/客户端版本）？",
+      "Git 拉代码提示 Permission denied (publickey)，如何修复？",
+      "发布后错误率飙升，什么时候应该回滚？回滚前检查清单是什么？",
+      "P0 事故响应流程是什么？多久更新一次状态？什么时候需要升级？",
+      "公司数据分级 L0/L1/L2/L3 有什么区别？哪些属于 PII？",
     ],
     // Agent mode
     toggle_graph:       "Graph RAG",
@@ -311,10 +313,12 @@ const I18N = {
     docsDeleting:       "Deleting…",
     docsRebuildNotice:  "Index rebuilds automatically after upload or delete",
     sampleQueries: [
-      "How to implement efficient enterprise knowledge retrieval?",
-      "What is the HyDE hypothetical document embedding technique?",
-      "How do you evaluate the recall rate of a RAG system?",
-      "What are the advantages of cross-encoder reranking?",
+      "I lost my MFA device — how do I regain SSO access and what ticket should I file?",
+      "VPN is connected but I can’t reach internal systems. What should I check (DNS/groups/client)?",
+      "Git clone fails with Permission denied (publickey). How do I fix SSH access?",
+      "After a release, error rate spikes. When should we rollback and what’s the checklist?",
+      "What is the P0 incident response process and escalation criteria?",
+      "What’s the difference between L0/L1/L2/L3 data classification and what counts as PII?",
     ],
     // Agent mode
     toggle_graph:       "Graph RAG",
@@ -1179,7 +1183,7 @@ export default function RAGDashboard() {
   const [lang, setLang]                   = usePersistedState("lang", "zh");
   const t = useCallback((key,...args)=>tL(lang,key,...args),[lang]);
 
-  const [query, setQuery]                 = useState("企业知识库如何实现高效检索？");
+  const [query, setQuery]                 = useState("忘记 SSO 密码或 MFA 丢失怎么办？需要提交什么工单？");
   const [strategy, setStrategy]           = usePersistedState("strategy", "adaptive");
   const [enableIterative, setEnableIterative] = usePersistedState("enableIterative", true);
   const [enableHyde, setEnableHyde]       = usePersistedState("enableHyde", false);
