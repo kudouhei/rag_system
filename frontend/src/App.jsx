@@ -471,7 +471,12 @@ const LogEntry = ({ entry, lang }) => {
       fontSize:12.5, color:C.text, display:"flex", gap:8, alignItems:"flex-start",
     }}>
       <span style={{opacity:0.55, flexShrink:0, marginTop:1}}>{icons[entry.type]||"•"}</span>
-      <span style={{lineHeight:1.5}}>{getContent()}</span>
+      <span style={{
+        lineHeight:1.5,
+        minWidth:0,
+        overflowWrap:"anywhere",
+        wordBreak:"break-word",
+      }}>{getContent()}</span>
     </div>
   );
 };
@@ -1103,6 +1108,7 @@ export default function RAGDashboard() {
 
   // Backend readiness (prevents WS attempts while the API is still starting)
   const [backendReady, setBackendReady]   = useState(false);
+  const [isNarrow, setIsNarrow]           = useState(false);
 
   // Answer feedback
   const [feedbackGiven, setFeedbackGiven] = useState(null);   // "pos" | "neg" | null
@@ -1122,6 +1128,14 @@ export default function RAGDashboard() {
   }, []);
 
   useEffect(() => { fetchKbStats(); }, [fetchKbStats]);
+
+  // Responsive layout helper (Process tab)
+  useEffect(() => {
+    const onResize = () => setIsNarrow(window.innerWidth < 1100);
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -1336,10 +1350,15 @@ export default function RAGDashboard() {
         </div>
       </div>
 
-      <div style={{display:"grid", gridTemplateColumns:"380px 1fr", gap:16, maxWidth:1440}}>
+      <div style={{
+        display:"grid",
+        gridTemplateColumns: isNarrow ? "minmax(0, 1fr)" : "420px minmax(0, 1fr)",
+        gap:16,
+        width:"100%",
+      }}>
 
         {/* ══ LEFT PANEL ══ */}
-        <div style={{display:"flex", flexDirection:"column", gap:12}}>
+        <div style={{display:"flex", flexDirection:"column", gap:12, minWidth:0, width:"100%"}}>
 
           {/* Backend status */}
           <div style={{
@@ -1617,7 +1636,7 @@ export default function RAGDashboard() {
         </div>
 
         {/* ══ RIGHT PANEL ══ */}
-        <div style={{display:"flex", flexDirection:"column", gap:12}}>
+        <div style={{display:"flex", flexDirection:"column", gap:12, minWidth:0, width:"100%"}}>
 
           {/* Tabs */}
           <div style={{display:"flex", gap:4, borderBottom:`1px solid ${C.border}`, paddingBottom:8}}>
@@ -1643,8 +1662,15 @@ export default function RAGDashboard() {
 
           {/* ── Process Tab ── */}
           {activeTab==="process" && (
-            <div style={{display:"grid", gridTemplateColumns:"1fr 340px", gap:12}}>
-              <div>
+            <div style={{
+              display:"grid",
+              // Two-column responsive layout (no middle column)
+              gridTemplateColumns: isNarrow ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)",
+              gap:12,
+              minWidth:0,
+            }}>
+              {/* Left column: HyDE + Execution log + Iteration trace */}
+              <div style={{minWidth:0}}>
                 {hydeDoc && (
                   <div style={{
                     background:`${C.teal}08`, border:`1px solid ${C.teal}33`,
@@ -1656,9 +1682,13 @@ export default function RAGDashboard() {
                     <p style={{margin:0, fontSize:12, color:C.textMid, lineHeight:1.6, fontStyle:"italic"}}>{hydeDoc}</p>
                   </div>
                 )}
+
                 <div style={{
                   background:C.surface, border:`1px solid ${C.borderBright}`,
-                  borderRadius:8, padding:12, height:380, overflowY:"auto",
+                  borderRadius:8, padding:12,
+                  height:"min(420px, 45vh)",
+                  overflowY:"auto",
+                  minWidth:0, overflowX:"hidden",
                 }}>
                   <div style={{fontSize:10, color:C.textMid, fontWeight:700, letterSpacing:"0.1em", marginBottom:8}}>
                     {t("logTitle")} {status==="running"&&<Spinner size={10}/>}
@@ -1669,7 +1699,8 @@ export default function RAGDashboard() {
                   {logs.map((entry,i)=><LogEntry key={i} entry={entry} lang={lang}/>)}
                   <div ref={logsEndRef}/>
                 </div>
-                {/* Agent Route Decision card */}
+
+                {/* Agent Route Decision card (below execution log) */}
                 {agentMode && agentRoute && (()=>{
                   const routes = t("agent_routes");
                   const ri = routes[agentRoute.route] || { label:agentRoute.route, color:C.textMid, icon:"•" };
@@ -1715,7 +1746,7 @@ export default function RAGDashboard() {
                   );
                 })()}
 
-                {/* Sub-task results for complex route */}
+                {/* Sub-task results (moved here after removing middle column) */}
                 {agentMode && agentSubResults.length > 0 && (
                   <div style={{background:C.surface, border:`1px solid ${C.purple}33`, borderRadius:8, padding:14, marginTop:12}}>
                     <div style={{fontSize:10, color:C.purple, fontWeight:700, letterSpacing:"0.1em", marginBottom:8}}>
@@ -1738,8 +1769,25 @@ export default function RAGDashboard() {
                   </div>
                 )}
 
-                {answer && (
-                  <div style={{background:C.surface, border:`1px solid ${C.green}44`, borderRadius:8, padding:14, marginTop:12}}>
+                {/* Iteration trace (below execution log) */}
+                <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:8, padding:14, marginTop:12}}>
+                  <div style={{fontSize:10, color:C.textMid, fontWeight:700, letterSpacing:"0.1em", marginBottom:10}}>
+                    {t("iterTitle")}
+                  </div>
+                  <IterationTimeline iterations={iterations}/>
+                  {iterations.length===0 && (
+                    <div style={{color:C.textDim, fontSize:12, textAlign:"center", marginTop:20}}>{t("iterEmpty")}</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Right column: Generated answer */}
+              {!isNarrow && <div style={{minWidth:0}}>
+                {answer ? (
+                  <div style={{
+                    background:C.surface, border:`1px solid ${C.green}44`, borderRadius:8, padding:14,
+                    maxHeight:"calc(100vh - 260px)", overflowY:"auto",
+                  }}>
                     <div style={{fontSize:10, color:C.green, fontWeight:700, letterSpacing:"0.1em", marginBottom:8}}>
                       {t("answerTitle")}
                     </div>
@@ -1787,17 +1835,40 @@ export default function RAGDashboard() {
                       </div>
                     )}
                   </div>
+                ) : (
+                  <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:8, padding:14, color:C.textDim, fontSize:12}}>
+                    {status==="idle"
+                      ? (lang==="en" ? "Run a query to generate an answer." : "执行检索后将在此处显示生成答案。")
+                      : (lang==="en" ? "Generating…" : "生成中…")}
+                  </div>
                 )}
-              </div>
-              <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:8, padding:14, height:"fit-content"}}>
-                <div style={{fontSize:10, color:C.textMid, fontWeight:700, letterSpacing:"0.1em", marginBottom:10}}>
-                  {t("iterTitle")}
+              </div>}
+
+              {/* Narrow layout: answer goes below */}
+              {isNarrow && (
+                <div style={{minWidth:0}}>
+                  {answer ? (
+                    <div style={{
+                      background:C.surface, border:`1px solid ${C.green}44`, borderRadius:8, padding:14,
+                      maxHeight:"min(520px, 55vh)", overflowY:"auto",
+                    }}>
+                      <div style={{fontSize:10, color:C.green, fontWeight:700, letterSpacing:"0.1em", marginBottom:8}}>
+                        {t("answerTitle")}
+                      </div>
+                      <p style={{margin:0, fontSize:13, lineHeight:1.8, color:C.text, whiteSpace:"pre-line"}}>
+                        {answer}
+                        {status==="running"&&<span style={{animation:"pulse 0.8s infinite",display:"inline-block"}}>▌</span>}
+                      </p>
+                    </div>
+                  ) : (
+                    <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:8, padding:14, color:C.textDim, fontSize:12}}>
+                      {status==="idle"
+                        ? (lang==="en" ? "Run a query to generate an answer." : "执行检索后将在此处显示生成答案。")
+                        : (lang==="en" ? "Generating…" : "生成中…")}
+                    </div>
+                  )}
                 </div>
-                <IterationTimeline iterations={iterations}/>
-                {iterations.length===0 && (
-                  <div style={{color:C.textDim, fontSize:12, textAlign:"center", marginTop:20}}>{t("iterEmpty")}</div>
-                )}
-              </div>
+              )}
             </div>
           )}
 
