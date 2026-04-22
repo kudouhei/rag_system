@@ -702,6 +702,7 @@ const DocsTab = ({ lang, kbStats, onRefresh }) => {
   const [previewErr,   setPreviewErr]   = useState("");
   const [invLoading,   setInvLoading]   = useState(false);
   const [inventory,    setInventory]    = useState(null);
+  const [docsExpanded, setDocsExpanded] = useState(true);
   const inputRef = useRef(null);
 
   const addFiles = (rawFiles) => {
@@ -977,20 +978,39 @@ const DocsTab = ({ lang, kbStats, onRefresh }) => {
 
       {/* ── Document List ── */}
       <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:10, padding:16}}>
-        <div style={{fontSize:11, color:C.textMid, fontWeight:700, letterSpacing:"0.08em", marginBottom:12}}>
-          {tL(lang,"docsCurrentTitle")}
-          {kbStats && (
-            <span style={{fontWeight:400, marginLeft:8, color:C.textDim}}>
-              ({kbStats.total_chunks} {tL(lang,"kbChunks")} · {kbStats.total_sources} {tL(lang,"kbDocs")})
-            </span>
-          )}
-        </div>
+        <button
+          onClick={() => setDocsExpanded(v => !v)}
+          style={{
+            width:"100%",
+            display:"flex",
+            alignItems:"center",
+            justifyContent:"space-between",
+            gap:10,
+            background:"transparent",
+            border:"none",
+            padding:0,
+            cursor:"pointer",
+            fontFamily:"inherit",
+          }}
+        >
+          <div style={{fontSize:11, color:C.textMid, fontWeight:700, letterSpacing:"0.08em"}}>
+            {tL(lang,"docsCurrentTitle")}
+            {kbStats && (
+              <span style={{fontWeight:400, marginLeft:8, color:C.textDim}}>
+                ({kbStats.total_chunks} {tL(lang,"kbChunks")} · {kbStats.total_sources} {tL(lang,"kbDocs")})
+              </span>
+            )}
+          </div>
+          <span style={{color:C.textDim, fontSize:12, fontWeight:800}}>
+            {docsExpanded ? "▾" : "▸"}
+          </span>
+        </button>
 
-        {!kbStats || kbStats.sources?.length === 0 ? (
+        {docsExpanded && (!kbStats || kbStats.sources?.length === 0) ? (
           <div style={{textAlign:"center", padding:"24px 0", color:C.textDim, fontSize:13}}>
             {tL(lang,"docsEmpty")}
           </div>
-        ) : (
+        ) : docsExpanded ? (
           <div>
             {kbStats.sources.map((src, i) => {
               const isStale   = kbStats.stale_sources?.includes(src.source);
@@ -1059,7 +1079,7 @@ const DocsTab = ({ lang, kbStats, onRefresh }) => {
               ℹ {tL(lang,"docsRebuildNotice")}
             </div>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* ── Knowledge Asset Inventory ── */}
