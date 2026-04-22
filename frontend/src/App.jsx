@@ -161,6 +161,10 @@ const I18N = {
       "发布后错误率飙升，什么时候应该回滚？回滚前检查清单是什么？",
       "P0 事故响应流程是什么？多久更新一次状态？什么时候需要升级？",
       "公司数据分级 L0/L1/L2/L3 有什么区别？哪些属于 PII？",
+      "日志里哪些字段严禁打印？日志留存多久比较合规？",
+      "密钥/Token 泄露后应该立刻做什么？轮换流程是什么？",
+      "GDPR 下 DSAR（导出/删除个人数据）请求怎么处理？需要留哪些证据？",
+      "发生数据泄露事件的前 30 分钟应急步骤是什么？什么时候需要升级合规？",
     ],
     // Agent mode
     toggle_graph:       "Graph RAG",
@@ -319,6 +323,10 @@ const I18N = {
       "After a release, error rate spikes. When should we rollback and what’s the checklist?",
       "What is the P0 incident response process and escalation criteria?",
       "What’s the difference between L0/L1/L2/L3 data classification and what counts as PII?",
+      "What should never appear in logs, and what are recommended retention periods?",
+      "If an API key/token is leaked, what are the immediate steps and rotation process?",
+      "How should we handle GDPR DSAR (export/delete) requests and what evidence to keep?",
+      "What are the first 30 minutes steps for a data breach and when to escalate to compliance?",
     ],
     // Agent mode
     toggle_graph:       "Graph RAG",
