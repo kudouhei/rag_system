@@ -11,6 +11,7 @@ export default defineConfig({
     proxy: {
       '/ws': { target: backend, ws: true, changeOrigin: true },
       '/stats': backend,
+      '/inventory': backend,
       '/upload': backend,
       '/reload': backend,
       '/feedback': backend,

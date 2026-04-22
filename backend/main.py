@@ -1344,6 +1344,26 @@ async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
         },
     }))
 
+    # Audit: record what sources were actually used (for asset inventory analytics)
+    try:
+        _append_jsonl(AUDIT_FILE, {
+            "ts": _utc_now_iso(),
+            "type": "retrieval_complete",
+            "tenant_id": req.tenant_id,
+            "user_id": req.user_id,
+            "user_role": req.user_role,
+            "query": redact_text(req.query),
+            "strategy": req.strategy,
+            "top_k": req.top_k,
+            "final_confidence": round(final_conf, 3),
+            "retrieved": [
+                {"id": d.get("id"), "source": d.get("source"), "score": d.get("final_score")}
+                for d in final_docs
+            ],
+        })
+    except Exception:
+        pass
+
 # ══════════════════════════════════════════════════════════════════════════════
 # REST Endpoints
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1431,6 +1451,127 @@ async def get_stats():
             "positive": fb_pos,
             "satisfaction_rate": (fb_pos / fb_total) if fb_total else 0.0,
         },
+    }
+
+
+@app.get("/inventory")
+async def knowledge_asset_inventory():
+    """
+    Knowledge Asset Inventory:
+    - per-source size metrics (chunks/words/mtime)
+    - freshness (stale > 90 days)
+    - usage frequency (from audit.jsonl retrieval_complete events)
+    - feedback attribution (positive/negative per source via feedback doc_ids)
+    """
+    # Base: per-source stats from indexed chunks
+    per_src: dict = {}
+    doc_id_to_src = {}
+    now_ts = time.time()
+
+    for d in KNOWLEDGE_BASE:
+        src = d.get("source") or "unknown"
+        doc_id_to_src[d.get("id")] = src
+        if src not in per_src:
+            per_src[src] = {
+                "source": src,
+                "chunks": 0,
+                "words": 0,
+                "file_size_kb": d.get("file_size_kb", 0),
+                "last_modified": d.get("file_mtime", ""),
+                "mtime": d.get("mtime", now_ts),
+                "tags": d.get("tags", []),
+                # analytics
+                "usage_hits": 0,          # how often this source appeared in retrieved docs
+                "usage_queries": 0,        # how many retrieval events included this source (unique per event)
+                "feedback_total": 0,
+                "feedback_positive": 0,
+            }
+        per_src[src]["chunks"] += 1
+        per_src[src]["words"] += int(d.get("word_count", 0))
+
+    # Usage: parse audit retrieval_complete events
+    if AUDIT_FILE.exists():
+        try:
+            with AUDIT_FILE.open("r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except Exception:
+                        continue
+                    if obj.get("type") != "retrieval_complete":
+                        continue
+                    retrieved = obj.get("retrieved") or []
+                    seen_sources = set()
+                    for r in retrieved:
+                        src = r.get("source")
+                        if not src or src not in per_src:
+                            continue
+                        per_src[src]["usage_hits"] += 1
+                        seen_sources.add(src)
+                    for src in seen_sources:
+                        per_src[src]["usage_queries"] += 1
+        except Exception:
+            pass
+
+    # Feedback attribution: join feedback doc_ids → source
+    if FEEDBACK_FILE.exists():
+        try:
+            with FEEDBACK_FILE.open("r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except Exception:
+                        continue
+                    rating = int(obj.get("rating", 0))
+                    doc_ids = obj.get("doc_ids") or []
+                    # Count each source at most once per feedback event (avoid overcounting multi-chunk from same file)
+                    seen_sources = set()
+                    for did in doc_ids:
+                        src = doc_id_to_src.get(did)
+                        if not src or src not in per_src:
+                            continue
+                        seen_sources.add(src)
+                    for src in seen_sources:
+                        per_src[src]["feedback_total"] += 1
+                        if rating > 0:
+                            per_src[src]["feedback_positive"] += 1
+        except Exception:
+            pass
+
+    assets = []
+    for src, s in per_src.items():
+        stale = (now_ts - float(s.get("mtime", now_ts))) > 90 * 86400
+        fb_total = s["feedback_total"]
+        fb_pos = s["feedback_positive"]
+        assets.append({
+            "source": src,
+            "chunks": s["chunks"],
+            "words": s["words"],
+            "file_size_kb": s.get("file_size_kb", 0),
+            "last_modified": s.get("last_modified", ""),
+            "tags": s.get("tags", []),
+            "stale": stale,
+            "usage_hits": s["usage_hits"],
+            "usage_queries": s["usage_queries"],
+            "feedback_total": fb_total,
+            "feedback_positive": fb_pos,
+            "feedback_satisfaction_rate": (fb_pos / fb_total) if fb_total else None,
+        })
+
+    # Sort by usage, then recency
+    assets.sort(key=lambda a: (a["usage_queries"], a["usage_hits"]), reverse=True)
+
+    return {
+        "generated_at": _utc_now_iso(),
+        "total_sources": len(assets),
+        "total_chunks": len(KNOWLEDGE_BASE),
+        "assets": assets,
     }
 
 
@@ -2014,6 +2155,26 @@ async def run_agentic_pipeline(ws: WebSocket, req: QueryRequest) -> None:
             "sub_results": [{"query": r["query"], "answer_preview": r["answer"][:200]} for r in sub_results],
             "metrics": {},
         }))
+
+        # Audit: record sources used by agent complex route (inventory analytics)
+        try:
+            _append_jsonl(AUDIT_FILE, {
+                "ts": _utc_now_iso(),
+                "type": "retrieval_complete",
+                "tenant_id": req.tenant_id,
+                "user_id": req.user_id,
+                "user_role": req.user_role,
+                "query": redact_text(req.query),
+                "strategy": "agent_complex",
+                "top_k": 0,
+                "final_confidence": None,
+                "retrieved": [
+                    {"id": d.get("id"), "source": d.get("source"), "score": d.get("score")}
+                    for d in all_docs
+                ],
+            })
+        except Exception:
+            pass
 
 
 # ══════════════════════════════════════════════════════════════════════════════

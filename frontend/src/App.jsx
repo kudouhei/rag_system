@@ -700,6 +700,8 @@ const DocsTab = ({ lang, kbStats, onRefresh }) => {
   const [previewData,  setPreviewData]  = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewErr,   setPreviewErr]   = useState("");
+  const [invLoading,   setInvLoading]   = useState(false);
+  const [inventory,    setInventory]    = useState(null);
   const inputRef = useRef(null);
 
   const addFiles = (rawFiles) => {
@@ -786,6 +788,21 @@ const DocsTab = ({ lang, kbStats, onRefresh }) => {
     setPreviewErr("");
     setPreviewLoading(false);
   };
+
+  const fetchInventory = async () => {
+    setInvLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/inventory`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setInventory(await res.json());
+    } catch {
+      setInventory(null);
+    } finally {
+      setInvLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchInventory(); }, [kbStats?.total_chunks]); // refresh after rebuild/upload
 
   const fmtSize = (bytes) =>
     bytes >= 1024*1024 ? `${(bytes/1024/1024).toFixed(1)} MB`
@@ -1041,6 +1058,68 @@ const DocsTab = ({ lang, kbStats, onRefresh }) => {
             <div style={{fontSize:11, color:C.textDim, marginTop:8, textAlign:"center"}}>
               ℹ {tL(lang,"docsRebuildNotice")}
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Knowledge Asset Inventory ── */}
+      <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:10, padding:16}}>
+        <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12}}>
+          <div style={{fontSize:11, color:C.textMid, fontWeight:700, letterSpacing:"0.08em"}}>
+            {lang==="en" ? "KNOWLEDGE ASSET INVENTORY" : "数据资产盘点（Knowledge Asset Inventory）"}
+          </div>
+          <button onClick={fetchInventory} style={{
+            fontSize:10, color:C.accent, background:"transparent",
+            border:`1px solid ${C.accent}33`, borderRadius:4, padding:"2px 7px", cursor:"pointer",
+          }}>{invLoading ? (lang==="en" ? "…" : "…") : "↻"}</button>
+        </div>
+
+        {!inventory ? (
+          <div style={{fontSize:12, color:C.textDim}}>
+            {invLoading ? (lang==="en" ? "Loading…" : "加载中…") : (lang==="en" ? "No inventory data." : "暂无盘点数据")}
+          </div>
+        ) : (
+          <div style={{maxHeight:220, overflowY:"auto", paddingRight:4}}>
+            {inventory.assets.map((a,i)=>(
+              <div key={i} style={{
+                display:"grid",
+                gridTemplateColumns:"1.4fr 0.6fr 0.6fr 0.7fr 0.7fr",
+                gap:8,
+                padding:"8px 10px",
+                border:`1px solid ${C.border}`,
+                borderRadius:8,
+                background: a.stale ? `${C.orange}08` : C.bg,
+                marginBottom:6,
+                alignItems:"center",
+                minWidth:0,
+              }}>
+                <div style={{minWidth:0}}>
+                  <div style={{fontSize:12, fontWeight:700, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}} title={a.source}>
+                    {a.source}
+                  </div>
+                  <div style={{fontSize:10, color:C.textDim, marginTop:2}}>
+                    {a.last_modified ? new Date(a.last_modified).toLocaleDateString() : ""}{a.stale ? (lang==="en" ? " · stale" : " · ⚠ 过期") : ""}
+                  </div>
+                </div>
+                <div style={{fontSize:11, color:C.textMid}}>
+                  <span style={{fontWeight:700, color:C.accent}}>{a.chunks}</span> {lang==="en" ? "chunks" : "块"}
+                </div>
+                <div style={{fontSize:11, color:C.textMid}}>
+                  <span style={{fontWeight:700, color:C.green}}>{a.words}</span> {lang==="en" ? "words" : "词"}
+                </div>
+                <div style={{fontSize:11, color:C.textMid}}>
+                  <span style={{fontWeight:700}}>{a.usage_queries}</span> {lang==="en" ? "uses" : "次命中"}
+                </div>
+                <div style={{fontSize:11, color:C.textMid, textAlign:"right"}}>
+                  {a.feedback_total > 0
+                    ? <span style={{fontWeight:800, color:(a.feedback_satisfaction_rate>=0.7?C.green:C.orange)}}>
+                        {(a.feedback_satisfaction_rate*100).toFixed(0)}%
+                      </span>
+                    : <span style={{color:C.textDim}}>{lang==="en" ? "—" : "暂无"}</span>
+                  }
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
