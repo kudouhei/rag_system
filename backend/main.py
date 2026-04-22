@@ -989,8 +989,8 @@ async def _startup() -> None:
     await loop.run_in_executor(None, _init_cross_encoder)
 
     KNOWLEDGE_BASE = docs
-    # ⑩ Knowledge Graph — must run after BM25 so _tokenize_fn is available
-    await _init_graph(docs)
+    # ⑩ Knowledge Graph — build in background so the API starts fast
+    asyncio.create_task(_init_graph(docs))
 
     logger.info("✓ RAG system ready — %d chunks indexed (contextual=%s, cached=%s, graph_nodes=%d)",
                 len(KNOWLEDGE_BASE), CONTEXTUAL_CHUNKING, cached is not None,
@@ -1790,7 +1790,8 @@ async def _rebuild_index(force_reembed: bool = False) -> None:
     await loop.run_in_executor(None, _init_bm25, docs)
     KNOWLEDGE_BASE = docs
     doc_embeddings = embs
-    await _init_graph(docs)
+    # Rebuild graph in background so /reload returns quickly
+    asyncio.create_task(_init_graph(docs))
     logger.info("Index rebuild complete — %d chunks (cached=%s, graph_nodes=%d)",
                 len(KNOWLEDGE_BASE), cached is not None, len(KNOWLEDGE_GRAPH["nodes"]))
 
@@ -1914,24 +1915,54 @@ _ROUTER_SYS: dict = {
 
 
 async def route_query(query: str, language: str = "zh") -> dict:
-    """LLM-based query router. Falls back to 'rag' when LLM is unavailable."""
+    """Query router with fast heuristics + LLM fallback (with timeout)."""
     import re as _re
     default = {
         "route": "rag",
         "reason": "默认路由" if language == "zh" else "default",
         "sub_queries": [], "tools": [],
     }
+
+    q = (query or "").strip()
+    ql = q.lower()
+
+    # ── Fast heuristic routing (ms-level) ────────────────────────────────────
+    # Realtime: calculator / datetime / explicit "today" / math expressions
+    if _re.search(r"[\d]+\s*[\+\-\*\/\^]\s*[\d]+", q) or any(k in ql for k in ["计算", "calculator", "what time", "time now", "现在几点", "当前时间", "today", "日期"]):
+        return {"route": "realtime", "reason": "公式/时间工具" if language == "zh" else "math/time tool",
+                "sub_queries": [], "tools": ["calculator" if _re.search(r"[\d]+\s*[\+\-\*\/\^]\s*[\d]+", q) else "datetime"]}
+
+    # Company/internal KB intents (IT/Sec/Compliance/On-call keywords)
+    kb_keywords = [
+        "sso", "mfa", "vpn", "ztna", "权限", "access", "rbac", "abac",
+        "密钥", "token", "secrets", "加密", "encryption",
+        "日志", "log", "留存", "retention", "脱敏", "redaction",
+        "gdpr", "dsar", "数据分级", "pii", "隐私", "合规",
+        "事故", "p0", "p1", "on-call", "回滚", "发布", "rollout", "rollback",
+    ]
+    if any(k in ql for k in kb_keywords) or any(k in q for k in ["权限", "密钥", "日志", "合规", "数据泄露", "回滚", "发布", "事故"]):
+        return {"route": "rag", "reason": "命中内部知识关键词" if language == "zh" else "internal KB keywords",
+                "sub_queries": [], "tools": []}
+
+    # If LLM is unavailable, stop here.
     if not llm_client:
         return default
 
-    raw = await llm_call(
-        messages=[
-            {"role": "system", "content": _ROUTER_SYS.get(language, _ROUTER_SYS["zh"])},
-            {"role": "user",   "content": query},
-        ],
-        max_tokens=200,
-        temperature=0.1,
-    )
+    # ── LLM router fallback (timeout + safe degrade) ─────────────────────────
+    try:
+        raw = await asyncio.wait_for(
+            llm_call(
+                messages=[
+                    {"role": "system", "content": _ROUTER_SYS.get(language, _ROUTER_SYS["zh"])},
+                    {"role": "user",   "content": query},
+                ],
+                max_tokens=200,
+                temperature=0.1,
+            ),
+            timeout=1.6,
+        )
+    except Exception:
+        return default
     if not raw:
         return default
 

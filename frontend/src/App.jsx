@@ -420,6 +420,22 @@ const Spinner = ({ size = 16, color = C.accent }) => (
   }}/>
 );
 
+const TopProgress = ({ active, color = C.accent }) => {
+  if (!active) return null;
+  return (
+    <div style={{
+      position:"sticky", top:0, zIndex:50,
+      height:3, background:`${color}22`, borderRadius:999, overflow:"hidden",
+    }}>
+      <div style={{
+        height:"100%", width:"40%",
+        background:`linear-gradient(90deg,transparent,${color},transparent)`,
+        animation:"progress 1.1s ease-in-out infinite",
+      }}/>
+    </div>
+  );
+};
+
 // ── Phase Badge ───────────────────────────────────────────────────────────────
 const PHASES = {
   retrieval:  { label:"RETRIEVAL",  color:C.accent  },
@@ -1411,6 +1427,7 @@ export default function RAGDashboard() {
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         @keyframes spin  { to { transform: rotate(360deg); } }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        @keyframes progress { 0%{transform:translateX(-60%)} 100%{transform:translateX(260%)} }
         * { box-sizing: border-box; }
         ::-webkit-scrollbar{width:4px;}
         ::-webkit-scrollbar-track{background:${C.surface};}
@@ -1611,7 +1628,7 @@ export default function RAGDashboard() {
             border:"none", letterSpacing:"0.04em", fontFamily:"inherit",
             display:"flex", alignItems:"center", justifyContent:"center", gap:8, transition:"all 0.2s",
           }}>
-            {status==="running"?<><Spinner size={14} color={C.accent}/>{t("runningBtn")}</>:t("runBtn")}
+            {status==="running"?<><Spinner size={18} color={C.accent}/>{t("runningBtn")}</>:t("runBtn")}
           </button>
 
           {/* Query Stats */}
@@ -1748,6 +1765,7 @@ export default function RAGDashboard() {
 
         {/* ══ RIGHT PANEL ══ */}
         <div style={{display:"flex", flexDirection:"column", gap:12, minWidth:0, width:"100%"}}>
+          <TopProgress active={status==="running"} color={C.accent}/>
 
           {/* Tabs */}
           <div style={{display:"flex", gap:4, borderBottom:`1px solid ${C.border}`, paddingBottom:8}}>
@@ -1802,7 +1820,10 @@ export default function RAGDashboard() {
                   minWidth:0, overflowX:"hidden",
                 }}>
                   <div style={{fontSize:10, color:C.textMid, fontWeight:700, letterSpacing:"0.1em", marginBottom:8}}>
-                    {t("logTitle")} {status==="running"&&<Spinner size={10}/>}
+                    {t("logTitle")} {status==="running"&&<span style={{display:"inline-flex",alignItems:"center",gap:6,marginLeft:6}}>
+                      <Spinner size={14} color={C.accent}/>
+                      <span style={{color:C.accent, fontWeight:800}}>{lang==="zh" ? "执行中" : "Running"}</span>
+                    </span>}
                   </div>
                   {logs.length===0 && (
                     <div style={{color:C.textDim, fontSize:12, textAlign:"center", marginTop:40}}>{t("logEmpty")}</div>

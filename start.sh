@@ -24,11 +24,19 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "📦 Installing Python dependencies..."
 cd "$PROJECT_DIR/backend"
-pip install -r requirements.txt -q
+if ! python3 -m pip install -r requirements.txt -q; then
+    echo "⚠️  Python dependencies install failed (continuing)."
+    echo "    If startup fails, run manually in the right env:"
+    echo "      cd backend && python3 -m pip install -r requirements.txt"
+fi
 
 echo "📦 Installing Node dependencies..."
 cd "$PROJECT_DIR/frontend"
-npm install --silent
+if ! npm install --silent; then
+    echo "⚠️  Node dependencies install failed (continuing)."
+    echo "    If frontend fails, run manually:"
+    echo "      cd frontend && npm install"
+fi
 
 echo ""
 echo "🚀 Starting services..."
