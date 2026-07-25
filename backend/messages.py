@@ -1,0 +1,93 @@
+# ── Bilingual message table ────────────────────────────────────────────────────
+# All user-facing strings are defined here so the pipeline is language-agnostic.
+
+_MSG: dict = {
+    # Pipeline event messages
+    "phase_hyde": {
+        "zh": "HyDE：生成假设文档以增强向量检索…",
+        "en": "HyDE: generating hypothetical document to enhance vector retrieval…",
+    },
+    "hyde_done": {
+        "zh": "假设文档生成完成，用于向量检索",
+        "en": "Hypothetical document generated — used for vector retrieval",
+    },
+    "phase_retrieval": {
+        "zh": "第 {iteration} 轮检索（{strategy}）：「{query}」",
+        "en": "Round {iteration} retrieval ({strategy}): \"{query}\"",
+    },
+    "phase_reranking": {
+        "zh": "{ce}精排 {n} 个候选文档…",
+        "en": "{ce}Reranking {n} candidate documents…",
+    },
+    "phase_generation": {
+        "zh": "DeepSeek 流式生成答案…",
+        "en": "Generating answer with DeepSeek (streaming)…",
+    },
+    "phase_ragas": {
+        "zh": "RAGAS 评估：计算检索与生成质量指标…",
+        "en": "RAGAS evaluation: computing retrieval & generation quality metrics…",
+    },
+    # Failure diagnostics
+    "failure_extreme": {
+        "zh": "检索分数极低，查询词与知识库词汇差异较大，需重写为更通用的术语",
+        "en": "Retrieval score very low — query vocabulary differs greatly from the knowledge base; rewrite with more general terms",
+    },
+    "failure_moderate": {
+        "zh": "召回文档相关性不足，查询语义与文档内容存在偏差，尝试更换检索角度",
+        "en": "Retrieved documents lack relevance — semantic mismatch between query and docs; try rephrasing from a different angle",
+    },
+    "failure_low": {
+        "zh": "召回文档相关性低于置信阈值",
+        "en": "Retrieved document relevance below confidence threshold",
+    },
+    # LLM system prompts
+    "sys_answer": {
+        "zh": (
+            "你是企业知识库问答助手。请根据以下参考文档准确、详细地回答用户问题。"
+            "如文档中信息不足，请如实说明，不要编造内容。回答使用中文，语言自然流畅。"
+        ),
+        "en": (
+            "You are an enterprise knowledge-base assistant. "
+            "Answer the user's question accurately and in detail based on the provided reference documents. "
+            "If the documents lack sufficient information, say so honestly — do not fabricate content. "
+            "Reply in English with clear, natural language."
+        ),
+    },
+    "usr_answer": {
+        "zh": "参考文档：\n{context}\n\n用户问题：{query}",
+        "en": "Reference documents:\n{context}\n\nUser question: {query}",
+    },
+    "sys_rewrite": {
+        "zh": "你是检索优化专家。根据失败原因重写查询，使其更易命中知识库。只输出重写后的查询，不超过30字。",
+        "en": "You are a retrieval optimisation expert. Rewrite the query based on the failure reason to better match the knowledge base. Output only the rewritten query (≤15 words).",
+    },
+    "usr_rewrite": {
+        "zh": "原始查询：{original}\n失败原因：{reason}",
+        "en": "Original query: {original}\nFailure reason: {reason}",
+    },
+    "sys_hyde": {
+        "zh": "你是一位知识渊博的文档作者。根据用户问题，生成一段可能出现在知识库中的文档段落。直接输出段落内容，不超过150字，不要包含问题本身。",
+        "en": "You are a knowledgeable document author. Given the user's question, write a concise passage (≤100 words) that might appear in the knowledge base to answer it. Output only the passage — do not include the question itself.",
+    },
+    # Fallback answer (no LLM key)
+    "fallback_prefix": {
+        "zh": "根据知识库文档「{title}」，针对问题「{query}」：\n\n",
+        "en": "Based on the knowledge base document \"{title}\", regarding the question \"{query}\":\n\n",
+    },
+    "fallback_suffix": {
+        "zh": "\n\n（提示：未配置 DEEPSEEK_API_KEY，以上为文档直接摘录。）",
+        "en": "\n\n(Note: DEEPSEEK_API_KEY not configured — the above is a direct document excerpt.)",
+    },
+    # Cross-encoder label
+    "ce_label": {
+        "zh": "Cross-Encoder ",
+        "en": "Cross-Encoder ",
+    },
+}
+
+
+def _t(key: str, lang: str = "zh", **kwargs) -> str:
+    """Resolve a bilingual message key, interpolating kwargs."""
+    entry = _MSG.get(key, {})
+    text  = entry.get(lang) or entry.get("zh") or key
+    return text.format(**kwargs) if kwargs else text

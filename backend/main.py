@@ -30,14 +30,11 @@ Embeddings  : sentence-transformers  (BAAI/bge-small-zh-v1.5)
 Reranker    : BAAI/bge-reranker-base (optional, set RERANKER_MODEL)
 """
 
-import os
 import json
 import time
 import hashlib
 import asyncio
 import logging
-import re
-import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,163 +43,31 @@ from typing import List, Optional
 import numpy as np
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from dotenv import load_dotenv
 
 load_dotenv()
 
+from audit import AUDIT_FILE, FEEDBACK_FILE, _append_jsonl, _utc_now_iso, redact_text
+from config import (
+    CACHE_DIR,
+    CONTEXTUAL_CHUNKING,
+    DEEPSEEK_API_KEY,
+    DEEPSEEK_BASE_URL,
+    DEEPSEEK_MODEL,
+    DOCS_DIR,
+    EMBED_MODEL_NAME,
+    ENABLE_GRAPH,
+    MAX_CHUNK_CHARS,
+    RERANKER_MODEL,
+)
+from documents import chunk_text, load_documents_from_folder
+from messages import _t
+from schemas import FeedbackRequest, QueryRequest
+from pipeline_utils import _diagnose_failure, _iter_summary
+from agent_tools import tool_calculator, tool_datetime, tool_web_search
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
-
-# ── Enterprise-style audit & feedback (JSONL) ──────────────────────────────────
-BASE_DIR = Path(__file__).resolve().parent
-AUDIT_FILE = BASE_DIR / "audit.jsonl"
-FEEDBACK_FILE = BASE_DIR / "feedback.jsonl"
-_jsonl_lock = threading.Lock()
-
-
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _append_jsonl(path: Path, obj: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    line = json.dumps(obj, ensure_ascii=False)
-    with _jsonl_lock:
-        with path.open("a", encoding="utf-8") as f:
-            f.write(line + "\n")
-
-
-_REDACT_PATTERNS = [
-    # Email
-    (re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I), "[REDACTED_EMAIL]"),
-    # Bearer tokens / API keys (very rough)
-    (re.compile(r"\bBearer\s+[A-Za-z0-9._-]{16,}\b"), "Bearer [REDACTED_TOKEN]"),
-    (re.compile(r"\bsk-[A-Za-z0-9]{16,}\b"), "[REDACTED_API_KEY]"),
-    # IBAN (Luxembourg starts with LU; keep generic)
-    (re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b"), "[REDACTED_IBAN]"),
-    # Long digit sequences (cards / account ids)
-    (re.compile(r"\b\d{12,19}\b"), "[REDACTED_NUMBER]"),
-]
-
-
-def redact_text(s: Optional[str]) -> Optional[str]:
-    if s is None:
-        return None
-    out = s
-    for rx, repl in _REDACT_PATTERNS:
-        out = rx.sub(repl, out)
-    return out
-
-# ── Bilingual message table ────────────────────────────────────────────────────
-# All user-facing strings are defined here so the pipeline is language-agnostic.
-
-_MSG: dict = {
-    # Pipeline event messages
-    "phase_hyde": {
-        "zh": "HyDE：生成假设文档以增强向量检索…",
-        "en": "HyDE: generating hypothetical document to enhance vector retrieval…",
-    },
-    "hyde_done": {
-        "zh": "假设文档生成完成，用于向量检索",
-        "en": "Hypothetical document generated — used for vector retrieval",
-    },
-    "phase_retrieval": {
-        "zh": "第 {iteration} 轮检索（{strategy}）：「{query}」",
-        "en": "Round {iteration} retrieval ({strategy}): \"{query}\"",
-    },
-    "phase_reranking": {
-        "zh": "{ce}精排 {n} 个候选文档…",
-        "en": "{ce}Reranking {n} candidate documents…",
-    },
-    "phase_generation": {
-        "zh": "DeepSeek 流式生成答案…",
-        "en": "Generating answer with DeepSeek (streaming)…",
-    },
-    "phase_ragas": {
-        "zh": "RAGAS 评估：计算检索与生成质量指标…",
-        "en": "RAGAS evaluation: computing retrieval & generation quality metrics…",
-    },
-    # Failure diagnostics
-    "failure_extreme": {
-        "zh": "检索分数极低，查询词与知识库词汇差异较大，需重写为更通用的术语",
-        "en": "Retrieval score very low — query vocabulary differs greatly from the knowledge base; rewrite with more general terms",
-    },
-    "failure_moderate": {
-        "zh": "召回文档相关性不足，查询语义与文档内容存在偏差，尝试更换检索角度",
-        "en": "Retrieved documents lack relevance — semantic mismatch between query and docs; try rephrasing from a different angle",
-    },
-    "failure_low": {
-        "zh": "召回文档相关性低于置信阈值",
-        "en": "Retrieved document relevance below confidence threshold",
-    },
-    # LLM system prompts
-    "sys_answer": {
-        "zh": (
-            "你是企业知识库问答助手。请根据以下参考文档准确、详细地回答用户问题。"
-            "如文档中信息不足，请如实说明，不要编造内容。回答使用中文，语言自然流畅。"
-        ),
-        "en": (
-            "You are an enterprise knowledge-base assistant. "
-            "Answer the user's question accurately and in detail based on the provided reference documents. "
-            "If the documents lack sufficient information, say so honestly — do not fabricate content. "
-            "Reply in English with clear, natural language."
-        ),
-    },
-    "usr_answer": {
-        "zh": "参考文档：\n{context}\n\n用户问题：{query}",
-        "en": "Reference documents:\n{context}\n\nUser question: {query}",
-    },
-    "sys_rewrite": {
-        "zh": "你是检索优化专家。根据失败原因重写查询，使其更易命中知识库。只输出重写后的查询，不超过30字。",
-        "en": "You are a retrieval optimisation expert. Rewrite the query based on the failure reason to better match the knowledge base. Output only the rewritten query (≤15 words).",
-    },
-    "usr_rewrite": {
-        "zh": "原始查询：{original}\n失败原因：{reason}",
-        "en": "Original query: {original}\nFailure reason: {reason}",
-    },
-    "sys_hyde": {
-        "zh": "你是一位知识渊博的文档作者。根据用户问题，生成一段可能出现在知识库中的文档段落。直接输出段落内容，不超过150字，不要包含问题本身。",
-        "en": "You are a knowledgeable document author. Given the user's question, write a concise passage (≤100 words) that might appear in the knowledge base to answer it. Output only the passage — do not include the question itself.",
-    },
-    # Fallback answer (no LLM key)
-    "fallback_prefix": {
-        "zh": "根据知识库文档「{title}」，针对问题「{query}」：\n\n",
-        "en": "Based on the knowledge base document \"{title}\", regarding the question \"{query}\":\n\n",
-    },
-    "fallback_suffix": {
-        "zh": "\n\n（提示：未配置 DEEPSEEK_API_KEY，以上为文档直接摘录。）",
-        "en": "\n\n(Note: DEEPSEEK_API_KEY not configured — the above is a direct document excerpt.)",
-    },
-    # Cross-encoder label
-    "ce_label": {
-        "zh": "Cross-Encoder ",
-        "en": "Cross-Encoder ",
-    },
-}
-
-
-def _t(key: str, lang: str = "zh", **kwargs) -> str:
-    """Resolve a bilingual message key, interpolating kwargs."""
-    entry = _MSG.get(key, {})
-    text  = entry.get(lang) or entry.get("zh") or key
-    return text.format(**kwargs) if kwargs else text
-
-# ── Configuration ─────────────────────────────────────────────────────────────
-
-DOCS_DIR             = Path(os.getenv("DOCS_DIR", Path(__file__).parent / "docs"))
-EMBED_MODEL_NAME     = os.getenv("EMBED_MODEL", "BAAI/bge-small-zh-v1.5")
-RERANKER_MODEL       = os.getenv("RERANKER_MODEL", "")
-DEEPSEEK_API_KEY     = os.getenv("DEEPSEEK_API_KEY", "")
-DEEPSEEK_MODEL       = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
-DEEPSEEK_BASE_URL    = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-MAX_CHUNK_CHARS      = int(os.getenv("MAX_CHUNK_CHARS", "600"))
-# ⑦ Contextual Chunking: prepend LLM-generated context to each chunk before embedding
-CONTEXTUAL_CHUNKING  = os.getenv("CONTEXTUAL_CHUNKING", "false").lower() == "true"
-# ⑧ Embedding cache directory
-CACHE_DIR            = Path(os.getenv("CACHE_DIR", Path(__file__).parent / "cache"))
-# ⑩ Knowledge Graph (GraphRAG)
-ENABLE_GRAPH         = os.getenv("ENABLE_GRAPH", "true").lower() == "true"
 
 # ── Global state ──────────────────────────────────────────────────────────────
 
@@ -226,102 +91,6 @@ app = FastAPI(title="Adaptive RAG System", version="2.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Document Management
-# ══════════════════════════════════════════════════════════════════════════════
-
-def chunk_text(text: str, max_chars: int = MAX_CHUNK_CHARS) -> List[str]:
-    text = text.strip()
-    if not text:
-        return []
-    if len(text) <= max_chars:
-        return [text]
-
-    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
-    if len(paragraphs) <= 1:
-        paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
-
-    chunks, current = [], ""
-    for para in paragraphs:
-        if len(current) + len(para) + 2 <= max_chars:
-            current = (current + "\n\n" + para).strip()
-        else:
-            if current:
-                chunks.append(current)
-            if len(para) > max_chars:
-                for i in range(0, len(para), max_chars):
-                    chunks.append(para[i: i + max_chars])
-                current = ""
-            else:
-                current = para
-    if current:
-        chunks.append(current)
-    return chunks or [text[:max_chars]]
-
-
-def load_documents_from_folder(docs_dir: Path) -> List[dict]:
-    if not docs_dir.exists():
-        docs_dir.mkdir(parents=True, exist_ok=True)
-        logger.warning("Created docs dir: %s", docs_dir)
-        return []
-
-    docs, doc_id = [], 0
-    for path in sorted(docs_dir.glob("**/*")):
-        if not path.is_file():
-            continue
-        suffix = path.suffix.lower()
-        text = ""
-        try:
-            if suffix in (".txt", ".md"):
-                text = path.read_text(encoding="utf-8")
-            elif suffix == ".pdf":
-                try:
-                    import pypdf
-                    reader = pypdf.PdfReader(str(path))
-                    text = "\n\n".join(p.extract_text() or "" for p in reader.pages)
-                except ImportError:
-                    logger.warning("pypdf not installed — skipping %s", path.name)
-                    continue
-            else:
-                continue
-        except Exception as e:
-            logger.warning("Cannot read %s: %s", path.name, e)
-            continue
-
-        if not text.strip():
-            continue
-
-        chunks = chunk_text(text)
-        tags = [suffix.lstrip(".")]
-        if path.parent != docs_dir:
-            tags.append(path.parent.name)
-
-        stat = path.stat()
-        for i, chunk in enumerate(chunks):
-            doc_id += 1
-            title = path.stem + (f" (§{i + 1})" if len(chunks) > 1 else "")
-            docs.append({
-                "id":           f"doc_{doc_id:04d}",
-                "title":        title,
-                "content":      chunk,
-                "source":       str(path.relative_to(docs_dir)),
-                "tags":         tags,
-                "embedding_score": 0.0,
-                "bm25_score":   0.0,
-                # ── Enhanced metadata for knowledge base management ──
-                "word_count":   len(chunk.split()),
-                "char_count":   len(chunk),
-                "chunk_index":  i,
-                "total_chunks": len(chunks),
-                "file_size_kb": round(stat.st_size / 1024, 1),
-                "mtime":        stat.st_mtime,
-                "file_mtime":   datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
-                "indexed_at":   datetime.now(tz=timezone.utc).isoformat(),
-            })
-
-    logger.info("Loaded %d chunks from %d files in %s", len(docs), len({d["source"] for d in docs}), docs_dir)
-    return docs
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Dense Retrieval — sentence-transformers (BAAI/bge)
@@ -995,46 +764,6 @@ async def _startup() -> None:
     logger.info("✓ RAG system ready — %d chunks indexed (contextual=%s, cached=%s, graph_nodes=%d)",
                 len(KNOWLEDGE_BASE), CONTEXTUAL_CHUNKING, cached is not None,
                 len(KNOWLEDGE_GRAPH["nodes"]))
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Request / Response Models
-# ══════════════════════════════════════════════════════════════════════════════
-
-class ConversationTurn(BaseModel):
-    role: str       # "user" | "assistant"
-    content: str
-
-
-class QueryRequest(BaseModel):
-    query: str
-    # Enterprise context (optional)
-    tenant_id: Optional[str] = None
-    user_id: Optional[str] = None
-    user_role: Optional[str] = None
-    ticket_id: Optional[str] = None
-    product: Optional[str] = None
-    version: Optional[str] = None
-    environment: Optional[str] = None
-    strategy: str = "adaptive"          # vector | bm25 | hybrid | adaptive
-    enable_iterative: bool = True
-    enable_hyde: bool = False           # HyDE (Gao et al., EMNLP 2022)
-    enable_graph: bool = False          # ⑩ GraphRAG knowledge-graph lane
-    confidence_threshold: float = 0.55
-    top_k: int = 5
-    language: str = "zh"               # "zh" | "en"
-    history: List[ConversationTurn] = []
-
-
-class FeedbackRequest(BaseModel):
-    query: str
-    answer: str
-    rating: int                      # 1 | -1
-    comment: Optional[str] = None
-    doc_ids: List[str] = []
-    language: Optional[str] = "zh"
-    tenant_id: Optional[str] = None
-    user_id: Optional[str] = None
-    user_role: Optional[str] = None
 
 # ══════════════════════════════════════════════════════════════════════════════
 # WebSocket — streaming RAG pipeline
@@ -1795,93 +1524,9 @@ async def _rebuild_index(force_reembed: bool = False) -> None:
     logger.info("Index rebuild complete — %d chunks (cached=%s, graph_nodes=%d)",
                 len(KNOWLEDGE_BASE), cached is not None, len(KNOWLEDGE_GRAPH["nodes"]))
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _diagnose_failure(top_score: float, threshold: float, lang: str = "zh") -> str:
-    if top_score < 0.35:
-        return _t("failure_extreme", lang)
-    if top_score < threshold:
-        return _t("failure_moderate", lang)
-    return _t("failure_low", lang)
-
-
-def _iter_summary(iteration, query, strategy, top_score, reflected, results):
-    return {
-        "iteration": iteration, "query": query, "strategy": strategy,
-        "top_score": round(top_score, 3), "reflected": reflected,
-        "results": [{"id": r["id"], "title": r["title"], "score": round(r["final_score"], 3)} for r in results[:3]],
-    }
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 # Agentic RAG — Router Agent + Tools + Orchestrator
 # ══════════════════════════════════════════════════════════════════════════════
-
-# ── Tool: current datetime ─────────────────────────────────────────────────────
-
-def tool_datetime() -> str:
-    weekdays_zh = ["一", "二", "三", "四", "五", "六", "日"]
-    weekdays_en = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-    now = datetime.now()
-    return json.dumps({
-        "datetime":   now.strftime("%Y-%m-%d %H:%M:%S"),
-        "date_zh":    now.strftime("%Y年%m月%d日"),
-        "weekday_zh": f"星期{weekdays_zh[now.weekday()]}",
-        "weekday_en": weekdays_en[now.weekday()],
-        "timestamp":  int(now.timestamp()),
-    }, ensure_ascii=False)
-
-
-# ── Tool: safe calculator ──────────────────────────────────────────────────────
-
-def tool_calculator(expression: str) -> str:
-    """Evaluate a math expression using Python's ast module (no eval() risk)."""
-    import ast as _ast
-    import operator as _op
-    _OPS = {
-        _ast.Add: _op.add, _ast.Sub: _op.sub,
-        _ast.Mult: _op.mul, _ast.Div: _op.truediv,
-        _ast.Pow: _op.pow, _ast.Mod: _op.mod, _ast.FloorDiv: _op.floordiv,
-    }
-
-    def _eval(node):
-        if isinstance(node, _ast.Constant) and isinstance(node.value, (int, float)):
-            return node.value
-        if isinstance(node, _ast.BinOp) and type(node.op) in _OPS:
-            return _OPS[type(node.op)](_eval(node.left), _eval(node.right))
-        if isinstance(node, _ast.UnaryOp) and isinstance(node.op, _ast.USub):
-            return -_eval(node.operand)
-        raise ValueError(f"Unsupported expression node: {type(node).__name__}")
-
-    try:
-        result = _eval(_ast.parse(expression.strip(), mode="eval").body)
-        return json.dumps({"expression": expression, "result": result})
-    except Exception as e:
-        return json.dumps({"expression": expression, "error": str(e)})
-
-
-# ── Tool: web search (DuckDuckGo, no API key needed) ──────────────────────────
-
-async def tool_web_search(query: str, max_results: int = 4) -> str:
-    try:
-        from duckduckgo_search import DDGS
-        loop = asyncio.get_event_loop()
-
-        def _search():
-            with DDGS() as ddgs:
-                return list(ddgs.text(query, max_results=max_results))
-
-        results = await loop.run_in_executor(None, _search)
-        formatted = [
-            {"title": r.get("title", ""), "url": r.get("href", ""), "snippet": r.get("body", "")[:300]}
-            for r in results
-        ]
-        return json.dumps({"query": query, "results": formatted}, ensure_ascii=False, indent=2)
-    except ImportError:
-        return json.dumps({"error": "duckduckgo_search not installed — run: pip install duckduckgo_search"})
-    except Exception as e:
-        return json.dumps({"error": f"Web search unavailable: {e}"})
-
 
 # ── Router system prompts ──────────────────────────────────────────────────────
 
