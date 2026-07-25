@@ -2,7 +2,7 @@ import { C } from "../../config/theme";
 import { I18N } from "../../i18n/index.jsx";
 import { Tag } from "../ui.jsx";
 
-export const Header = ({ lang, setLang, setQuery, enableGraph, agentMode, t }) => (
+export const Header = ({ lang, setLang, setQuery, agentMode, t }) => (
   <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24}}>
     <div style={{display:"flex", alignItems:"center", gap:12}}>
       <div style={{
@@ -37,7 +37,6 @@ export const Header = ({ lang, setLang, setQuery, enableGraph, agentMode, t }) =
       </div>
 
       <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
-        {enableGraph && <Tag label={t("badge_graph")} color="#059669"/>}
         {agentMode && <Tag label={t("badge_agent")} color={C.orange}/>} 
       </div>
     </div>

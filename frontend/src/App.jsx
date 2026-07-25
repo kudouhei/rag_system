@@ -12,11 +12,13 @@ import { TabBar } from "./components/layout/TabBar.jsx";
 import { ProcessTab } from "./components/process/ProcessTab.jsx";
 import { ResultsTab } from "./components/tabs/ResultsTab.jsx";
 import { MetricsTab } from "./components/tabs/MetricsTab.jsx";
+import { GraphTab } from "./components/tabs/GraphTab.jsx";
 
 const TABS = [
   {key:"process",      lk:"tab_process", icon:"⚙"},
   {key:"results",      lk:"tab_results", icon:"📋"},
   {key:"metrics",      lk:"tab_metrics", icon:"📊"},
+  {key:"graph",        lk:"tab_graph",   icon:"🕸"},
   {key:"conversation", lk:"tab_conv",    icon:"💬"},
   {key:"docs",         lk:"tab_docs",    icon:"📁"},
 ];
@@ -224,7 +226,6 @@ export default function RAGDashboard() {
         lang={lang}
         setLang={setLang}
         setQuery={setQuery}
-        enableGraph={enableGraph}
         agentMode={agentMode}
         t={t}
       />
@@ -316,6 +317,10 @@ export default function RAGDashboard() {
               lang={lang}
               t={t}
             />
+          )}
+
+          {activeTab==="graph" && (
+            <GraphTab lang={lang} t={t} active={activeTab==="graph"}/>
           )}
 
           {activeTab==="conversation" && (
