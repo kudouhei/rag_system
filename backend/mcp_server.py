@@ -35,10 +35,13 @@ if _BACKEND_DIR not in sys.path:
 
 from fastmcp import FastMCP, Context
 
-# Import shared RAG state and functions from main.py.
+# Import shared RAG state and functions from the backend modules directly.
 # We import lazily inside the lifespan so that heavy models (sentence-transformers,
 # BM25) are only loaded after the MCP handshake completes.
-import main as rag
+from app.core import state as rag_state
+from app.core import config as rag_config
+from app.pipeline import indexing as rag_indexing
+from app.pipeline.rag_pipeline import query_rag
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +53,11 @@ logger = logging.getLogger(__name__)
 async def rag_lifespan(server):
     """Load embedding model, BM25 index, and LLM client on startup."""
     logger.info("RAG MCP Server: initialising knowledge base…")
-    await rag._startup()
+    await rag_indexing.startup()
     logger.info(
         "RAG MCP Server: ready — %d chunks indexed, LLM=%s",
-        len(rag.KNOWLEDGE_BASE),
-        rag.DEEPSEEK_MODEL if rag.llm_client else "disabled",
+        len(rag_state.KNOWLEDGE_BASE),
+        rag_config.DEEPSEEK_MODEL if rag_state.llm_client else "disabled",
     )
     yield
     logger.info("RAG MCP Server: shutting down")
@@ -64,7 +67,7 @@ mcp = FastMCP(
     name="企业知识库 RAG",
     instructions=(
         "This server provides access to an enterprise knowledge base using "
-        "Adaptive RAG (HyDE · Hybrid Dense-Sparse Retrieval · Cross-Encoder Reranking). "
+        "Adaptive RAG (Hybrid Dense-Sparse Retrieval · Cross-Encoder Reranking). "
         "Use `search_knowledge_base` to ask questions and get grounded answers with citations. "
         "Use `retrieve_documents` when you only need raw document chunks. "
         "Use `list_documents` to explore what topics are covered."
@@ -81,34 +84,29 @@ async def search_knowledge_base(
     query: str,
     top_k: int = 5,
     strategy: str = "adaptive",
-    enable_hyde: bool = False,
     language: str = "zh",
 ) -> str:
     """
     Search the enterprise knowledge base and return a grounded answer.
 
     Runs the full Adaptive RAG pipeline:
-      1. Optional HyDE (hypothetical-document embeddings) for better recall
-      2. Hybrid dense+sparse retrieval with iterative reflection
-      3. Cross-encoder reranking
-      4. LLM answer generation with source citations
+      1. Hybrid dense+sparse retrieval with iterative reflection
+      2. Cross-encoder reranking
+      3. LLM answer generation with source citations
 
     Args:
         query:       The question to answer (Chinese or English).
         top_k:       Number of document chunks to retrieve (default 5).
         strategy:    Retrieval strategy — "adaptive" | "hybrid" | "vector" | "bm25".
                      "adaptive" automatically cycles strategies on low confidence.
-        enable_hyde: If True, generate a hypothetical document to improve recall
-                     on vague or abstract queries. Requires DEEPSEEK_API_KEY.
         language:    Response language — "zh" (default) or "en".
 
     Returns:
         Formatted string with the LLM answer followed by source citations.
     """
-    result = await rag.query_rag(
+    result = await query_rag(
         query=query,
         strategy=strategy,
-        enable_hyde=enable_hyde,
         enable_iterative=True,
         top_k=top_k,
         language=language,
@@ -166,10 +164,9 @@ async def retrieve_documents(
         JSON array of document chunks sorted by relevance score.
     """
     top_k = min(top_k, 20)
-    result = await rag.query_rag(
+    result = await query_rag(
         query=query,
         strategy=strategy,
-        enable_hyde=False,
         enable_iterative=False,
         top_k=top_k,
         language="zh",
@@ -210,7 +207,7 @@ async def list_documents() -> str:
             "tags":       d.get("tags", []),
             "char_count": d.get("char_count", len(d["content"])),
         }
-        for d in rag.KNOWLEDGE_BASE
+        for d in rag_state.KNOWLEDGE_BASE
     ]
     return json.dumps(docs, ensure_ascii=False, indent=2)
 
@@ -228,7 +225,7 @@ async def get_kb_stats() -> str:
     cross-encoder status, and user feedback satisfaction rate (if available).
     """
     sources: dict = {}
-    for d in rag.KNOWLEDGE_BASE:
+    for d in rag_state.KNOWLEDGE_BASE:
         src = d.get("source") or "unknown"
         if src not in sources:
             sources[src] = {"chunks": 0, "words": 0, "tags": d.get("tags", [])}
@@ -237,15 +234,14 @@ async def get_kb_stats() -> str:
 
     stats = {
         "status":              "ok",
-        "total_chunks":        len(rag.KNOWLEDGE_BASE),
+        "total_chunks":        len(rag_state.KNOWLEDGE_BASE),
         "total_sources":       len(sources),
         "sources":             list(sources.keys()),
-        "embed_model":         rag.EMBED_MODEL_NAME,
-        "llm_enabled":         rag.llm_client is not None,
-        "llm_model":           rag.DEEPSEEK_MODEL if rag.llm_client else None,
-        "cross_encoder":       rag.RERANKER_MODEL or "cosine fallback",
-        "contextual_chunking": rag.CONTEXTUAL_CHUNKING,
-        "hyde_available":      rag.llm_client is not None,
+        "embed_model":         rag_config.EMBED_MODEL_NAME,
+        "llm_enabled":         rag_state.llm_client is not None,
+        "llm_model":           rag_config.DEEPSEEK_MODEL if rag_state.llm_client else None,
+        "cross_encoder":       rag_config.RERANKER_MODEL or "cosine fallback",
+        "contextual_chunking": rag_config.CONTEXTUAL_CHUNKING,
     }
     return json.dumps(stats, ensure_ascii=False, indent=2)
 

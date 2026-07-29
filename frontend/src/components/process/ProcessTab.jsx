@@ -9,7 +9,6 @@ export const ProcessTab = ({
   t,
   status,
   isNarrow,
-  hydeDoc,
   logs,
   logsEndRef,
   agentMode,
@@ -30,18 +29,6 @@ export const ProcessTab = ({
     minWidth:0,
   }}>
     <div style={{minWidth:0}}>
-      {hydeDoc && (
-        <div style={{
-          background:`${C.teal}08`, border:`1px solid ${C.teal}33`,
-          borderRadius:8, padding:"10px 14px", marginBottom:12,
-        }}>
-          <div style={{fontSize:10, color:C.teal, fontWeight:700, letterSpacing:"0.1em", marginBottom:6}}>
-            {t("hydeTitle")}
-          </div>
-          <p style={{margin:0, fontSize:12, color:C.textMid, lineHeight:1.6, fontStyle:"italic"}}>{hydeDoc}</p>
-        </div>
-      )}
-
       <div style={{
         background:C.surface, border:`1px solid ${C.borderBright}`,
         borderRadius:8, padding:12,

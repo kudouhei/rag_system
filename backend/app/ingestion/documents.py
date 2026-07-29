@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
-from config import MAX_CHUNK_CHARS
+from app.core.config import MAX_CHUNK_CHARS
 
 logger = logging.getLogger(__name__)
 

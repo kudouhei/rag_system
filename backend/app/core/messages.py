@@ -3,14 +3,6 @@
 
 _MSG: dict = {
     # Pipeline event messages
-    "phase_hyde": {
-        "zh": "HyDE：生成假设文档以增强向量检索…",
-        "en": "HyDE: generating hypothetical document to enhance vector retrieval…",
-    },
-    "hyde_done": {
-        "zh": "假设文档生成完成，用于向量检索",
-        "en": "Hypothetical document generated — used for vector retrieval",
-    },
     "phase_retrieval": {
         "zh": "第 {iteration} 轮检索（{strategy}）：「{query}」",
         "en": "Round {iteration} retrieval ({strategy}): \"{query}\"",
@@ -64,10 +56,6 @@ _MSG: dict = {
     "usr_rewrite": {
         "zh": "原始查询：{original}\n失败原因：{reason}",
         "en": "Original query: {original}\nFailure reason: {reason}",
-    },
-    "sys_hyde": {
-        "zh": "你是一位知识渊博的文档作者。根据用户问题，生成一段可能出现在知识库中的文档段落。直接输出段落内容，不超过150字，不要包含问题本身。",
-        "en": "You are a knowledgeable document author. Given the user's question, write a concise passage (≤100 words) that might appear in the knowledge base to answer it. Output only the passage — do not include the question itself.",
     },
     # Fallback answer (no LLM key)
     "fallback_prefix": {

@@ -8,7 +8,9 @@ from pathlib import Path
 from typing import Optional
 
 # ── Enterprise-style audit & feedback (JSONL) ──────────────────────────────────
-BASE_DIR = Path(__file__).resolve().parent
+# backend/app/core/audit.py -> backend/ is 3 levels up; keep the log files at
+# the backend root regardless of how the app/ package is organised internally.
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 AUDIT_FILE = BASE_DIR / "audit.jsonl"
 FEEDBACK_FILE = BASE_DIR / "feedback.jsonl"
 _jsonl_lock = threading.Lock()

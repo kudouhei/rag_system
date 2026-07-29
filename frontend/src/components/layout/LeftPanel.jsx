@@ -38,8 +38,6 @@ export const LeftPanel = ({
   setStrategy,
   enableIterative,
   setEnableIterative,
-  enableHyde,
-  setEnableHyde,
   enableGraph,
   setEnableGraph,
   threshold,
@@ -160,7 +158,6 @@ export const LeftPanel = ({
         }}>{lang==="zh" ? "检索增强" : "Enhancements"}</div>
         <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:6}}>
           <ToggleBtn labelKey="toggle_iterative" val={enableIterative} onToggle={()=>setEnableIterative(!enableIterative)} color={C.accent}  tipKey="tip_iterative" t={t}/>
-          <ToggleBtn labelKey="toggle_hyde"      val={enableHyde}      onToggle={()=>setEnableHyde(!enableHyde)}           color={C.teal}   tipKey="tip_hyde" t={t}/>
           <ToggleBtn labelKey="toggle_graph"     val={enableGraph}     onToggle={()=>setEnableGraph(!enableGraph)}         color="#059669"  tipKey="tip_graph" t={t}/>
         </div>
       </div>

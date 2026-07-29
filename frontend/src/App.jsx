@@ -30,7 +30,6 @@ export default function RAGDashboard() {
   const [query, setQuery]                 = useState("忘记 SSO 密码或 MFA 丢失怎么办？需要提交什么工单？");
   const [strategy, setStrategy]           = usePersistedState("strategy", "adaptive");
   const [enableIterative, setEnableIterative] = usePersistedState("enableIterative", true);
-  const [enableHyde, setEnableHyde]       = usePersistedState("enableHyde", false);
   const [enableConversation, setEnableConversation] = usePersistedState("enableConversation", false);
   const [enableGraph, setEnableGraph]     = usePersistedState("enableGraph", false);
   const [agentMode, setAgentMode]         = usePersistedState("agentMode", false);
@@ -45,7 +44,6 @@ export default function RAGDashboard() {
   const [metrics, setMetrics]             = useState(null);
   const [iterations, setIterations]       = useState([]);
   const [elapsed, setElapsed]             = useState(null);
-  const [hydeDoc, setHydeDoc]             = useState("");
   const [conversationHistory, setConversationHistory] = usePersistedState("conversationHistory", []);
   const [activeTab, setActiveTab]         = useState("process");
 
@@ -141,7 +139,6 @@ export default function RAGDashboard() {
 
   const handleMessage = useCallback((evt)=>{
     const msg=JSON.parse(evt.data);
-    if (msg.type==="hyde_generation") { setHydeDoc(msg.hypothetical_doc||""); setLogs(p=>[...p,msg]); return; }
     if (msg.type==="answer_token")    { setAnswer(msg.full_answer_so_far||""); return; }
     if (msg.type==="pipeline_complete") {
       setDocs(msg.retrieved_docs||[]);
@@ -175,7 +172,7 @@ export default function RAGDashboard() {
     submittedQueryRef.current=query;
     setStatus("running"); setLogs([]); setDocs([]); setAnswer("");
     setMetrics(null); setIterations([]); setElapsed(null);
-    setHydeDoc(""); setActiveTab("process");
+    setActiveTab("process");
     setFeedbackGiven(null); setFeedbackComment("");
     setAgentRoute(null); setAgentSubResults([]);
 
@@ -184,7 +181,6 @@ export default function RAGDashboard() {
     ws.onopen=()=>ws.send(JSON.stringify({
       query, strategy,
       enable_iterative:     enableIterative,
-      enable_hyde:          enableHyde,
       enable_graph:         enableGraph,
       confidence_threshold: threshold,
       top_k: 5,
@@ -199,7 +195,7 @@ export default function RAGDashboard() {
         : "WebSocket 无法连接：请先启动后端（监听 8000 端口）。可在项目根目录执行 ./start.sh，或：cd backend && python3 main.py"}]);
     };
     ws.onclose=()=>{ if(status==="running") setStatus("done"); };
-  },[backendReady,query,strategy,enableIterative,enableHyde,enableGraph,enableConversation,agentMode,threshold,status,lang,conversationHistory,handleMessage]);
+  },[backendReady,query,strategy,enableIterative,enableGraph,enableConversation,agentMode,threshold,status,lang,conversationHistory,handleMessage]);
 
   const handleKeyDown=(e)=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();runQuery();} };
 
@@ -253,8 +249,6 @@ export default function RAGDashboard() {
           setStrategy={setStrategy}
           enableIterative={enableIterative}
           setEnableIterative={setEnableIterative}
-          enableHyde={enableHyde}
-          setEnableHyde={setEnableHyde}
           enableGraph={enableGraph}
           setEnableGraph={setEnableGraph}
           threshold={threshold}
@@ -287,7 +281,6 @@ export default function RAGDashboard() {
               t={t}
               status={status}
               isNarrow={isNarrow}
-              hydeDoc={hydeDoc}
               logs={logs}
               logsEndRef={logsEndRef}
               agentMode={agentMode}
@@ -312,7 +305,6 @@ export default function RAGDashboard() {
               metrics={metrics}
               iterations={iterations}
               strategy={strategy}
-              enableHyde={enableHyde}
               conversationHistory={conversationHistory}
               lang={lang}
               t={t}

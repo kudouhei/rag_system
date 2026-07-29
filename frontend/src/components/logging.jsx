@@ -7,7 +7,6 @@ export const PHASES = {
   reranking:  { label:"RERANKING",  color:C.purple  },
   generation: { label:"GENERATION", color:C.green   },
   reflection: { label:"EVALUATION", color:C.orange  },
-  hyde:       { label:"HyDE",       color:C.teal    },
 };
 export const PhaseBadge = ({ phase }) => {
   const p = PHASES[phase] || { label:phase.toUpperCase(), color:C.textMid };
@@ -26,7 +25,7 @@ export const LogEntry = ({ entry, lang }) => {
     pipeline_start:"⚡", phase_start:"▶", doc_scored:"📄",
     retrieval_done:"✅", reflection:"🤔", query_rewrite:"✏️",
     rerank_score:"🔢", reranking_done:"🎯", answer_token:"💬",
-    pipeline_complete:"🏁", error:"❌", hyde_generation:"🔮",
+    pipeline_complete:"🏁", error:"❌",
     // Agent events
     agent_routing:"🔍", agent_route:"🚦", agent_tool_call:"🔧",
     agent_tool_result:"✅", agent_decompose:"🧩", agent_subquery:"▷",
@@ -37,7 +36,6 @@ export const LogEntry = ({ entry, lang }) => {
     switch (entry.type) {
       case "pipeline_start":     return tL(lang, "log_start", entry.query);
       case "phase_start":        return <span><PhaseBadge phase={entry.phase}/>&nbsp;&nbsp;{entry.message}</span>;
-      case "hyde_generation":    return tL(lang, "log_hyde", entry.hypothetical_doc || "");
       case "doc_scored":         return <span style={{fontSize:12}}>{tL(lang,"log_docScored",entry)}</span>;
       case "retrieval_done":     return tL(lang, "log_retDone", entry);
       case "reflection":         return tL(lang, "log_reflect", entry);

@@ -3,7 +3,7 @@
 > Enterprise Knowledge Base with Adaptive Retrieval-Augmented Generation  
 > 企业知识库自适应检索增强生成系统
 
-HyDE · Hybrid Retrieval (BGE + BM25) · Iterative Reflection · GraphRAG · Cross-Encoder Rerank · Agentic Routing · RAGAS
+Hybrid Retrieval (BGE + BM25) · Iterative Reflection · GraphRAG · Cross-Encoder Rerank · Agentic Routing · RAGAS
 
 ---
 
@@ -19,7 +19,7 @@ Frontend :3000  ──WebSocket──►  Backend :8000
                     Docs: backend/docs/  (.txt / .md / .pdf)
 ```
 
-**RAG 流程：** HyDE（可选）→ 多策略检索（最多 3 轮，低置信度则改写 query）→ 重排（需配置 `RERANKER_MODEL`）→ LLM 生成 → RAGAS 评估
+**RAG 流程：** 多策略检索（最多 3 轮，低置信度则改写 query）→ 重排（需配置 `RERANKER_MODEL`）→ LLM 生成 → RAGAS 评估
 
 ---
 
@@ -27,7 +27,7 @@ Frontend :3000  ──WebSocket──►  Backend :8000
 
 ```bash
 cp backend/.env.example backend/.env
-# 填写 DEEPSEEK_API_KEY（无 key 时可检索，但无法生成答案 / HyDE / 改写）
+# 填写 DEEPSEEK_API_KEY（无 key 时可检索，但无法生成答案 / 改写）
 
 chmod +x start.sh && ./start.sh
 ```
@@ -51,7 +51,7 @@ curl -X POST http://localhost:8000/reload
 
 | 变量 | 说明 |
 |------|------|
-| `DEEPSEEK_API_KEY` | LLM 答案、HyDE、query 改写 |
+| `DEEPSEEK_API_KEY` | LLM 答案、query 改写 |
 | `EMBED_MODEL` | 默认 `BAAI/bge-small-zh-v1.5`（本地 embedding） |
 | `RERANKER_MODEL` | 可选，如 `BAAI/bge-reranker-base` |
 | `MAX_CHUNK_CHARS` | 分块大小，默认 600 |
@@ -71,7 +71,7 @@ Embedding 在本地计算；审计与反馈日志会对 query/answer 做脱敏�
 | `/ws/query` | 标准 RAG 流式管道 |
 | `/ws/agent` | 智能路由（检索 / 直答 / 工具 / 多步） |
 
-请求字段：`query`、`strategy`（`adaptive` \| `hybrid` \| `vector` \| `bm25`）、`enable_iterative`、`enable_hyde`、`enable_graph`、`confidence_threshold`、`top_k`、`language`、`history`。
+请求字段：`query`、`strategy`（`adaptive` \| `hybrid` \| `vector` \| `bm25`）、`enable_iterative`、`enable_graph`、`confidence_threshold`、`top_k`、`language`、`history`。
 
 主要事件：`pipeline_complete`（含答案、文档、RAGAS 指标）、`answer_token`、`doc_scored`、`query_rewrite`。
 

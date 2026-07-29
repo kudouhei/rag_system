@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from messages import _t
+from app.core.messages import _t
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

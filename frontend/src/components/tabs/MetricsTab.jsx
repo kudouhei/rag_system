@@ -2,7 +2,7 @@ import { C } from "../../config/theme";
 import { RagasPanel, RecallChart } from "../results.jsx";
 import { ScoreBar, Tag } from "../ui.jsx";
 
-export const MetricsTab = ({ metrics, iterations, strategy, enableHyde, conversationHistory, lang, t }) => (
+export const MetricsTab = ({ metrics, iterations, strategy, conversationHistory, lang, t }) => (
   <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:12}}>
     <div>
       <RagasPanel metrics={metrics} lang={lang}/>
@@ -56,7 +56,6 @@ export const MetricsTab = ({ metrics, iterations, strategy, enableHyde, conversa
             📌 {t("note_dataset")}<br/>
             📌 {t("note_iter",iterations.length)}<br/>
             📌 {t("note_strat",strategy)}<br/>
-            📌 {t("note_hyde",enableHyde)}<br/>
             📌 {t("note_hist",Math.floor(conversationHistory.length/2))}
           </div>
         </>
