@@ -12,7 +12,7 @@ export const Header = ({ lang, setLang, setQuery, agentMode, t }) => (
         display:"flex", alignItems:"center", justifyContent:"center", fontSize:20,
       }}>⚡</div>
       <div>
-        <h1 style={{margin:0, fontSize:18, fontWeight:800, color:C.text}}>Adaptive RAG System</h1>
+        <h1 style={{margin:0, fontSize:18, fontWeight:800, color:C.text}}>Evidence-First RAG Workbench</h1>
         <p style={{margin:0, fontSize:11, color:C.textMid}}>{t("appSubtitle")}</p>
       </div>
     </div>

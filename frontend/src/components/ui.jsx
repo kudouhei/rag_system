@@ -10,7 +10,7 @@ export const Tag = ({ label, color = C.accent }) => (
   }}>{label}</span>
 );
 
-export const ScoreBar = ({ value, color = C.accent, label, showPercent = true }) => (
+export const ScoreBar = ({ value, color = C.accent, label, showPercent = true, valueFormat = "percent" }) => (
   <div style={{ display:"flex", alignItems:"center", gap:8 }}>
     {label && <span style={{ color:C.textMid, fontSize:11, minWidth:56 }}>{label}</span>}
     <div style={{ flex:1, height:6, background:C.border, borderRadius:3, overflow:"hidden" }}>
@@ -22,7 +22,7 @@ export const ScoreBar = ({ value, color = C.accent, label, showPercent = true })
     </div>
     {showPercent && (
       <span style={{ color, fontSize:11, fontWeight:700, minWidth:38, textAlign:"right" }}>
-        {(value*100).toFixed(1)}%
+        {valueFormat==="decimal" ? Number(value||0).toFixed(3) : `${(value*100).toFixed(1)}%`}
       </span>
     )}
   </div>

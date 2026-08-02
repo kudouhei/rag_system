@@ -87,7 +87,7 @@ export const LeftPanel = ({
         }}
       />
       <div style={{marginTop:8, display:"flex", flexWrap:"wrap", gap:4}}>
-        {t("sampleQueries").map(q=>(
+        {t("sampleQueries").slice(0,4).map(q=>(
           <button key={q} onClick={()=>setQuery(q)} style={{
             background:"transparent", border:`1px solid ${C.border}`,
             borderRadius:4, padding:"3px 8px", fontSize:10,

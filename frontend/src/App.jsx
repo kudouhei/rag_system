@@ -15,12 +15,12 @@ import { MetricsTab } from "./components/tabs/MetricsTab.jsx";
 import { GraphTab } from "./components/tabs/GraphTab.jsx";
 
 const TABS = [
-  {key:"process",      lk:"tab_process", icon:"⚙"},
-  {key:"results",      lk:"tab_results", icon:"📋"},
-  {key:"metrics",      lk:"tab_metrics", icon:"📊"},
-  {key:"graph",        lk:"tab_graph",   icon:"🕸"},
-  {key:"conversation", lk:"tab_conv",    icon:"💬"},
-  {key:"docs",         lk:"tab_docs",    icon:"📁"},
+  {key:"process",      lk:"tab_process", icon:"✦", group:"primary"},
+  {key:"results",      lk:"tab_results", icon:"▤", group:"primary"},
+  {key:"metrics",      lk:"tab_metrics", icon:"◫", group:"primary"},
+  {key:"graph",        lk:"tab_graph",   icon:"⌘", group:"secondary"},
+  {key:"conversation", lk:"tab_conv",    icon:"◌", group:"secondary"},
+  {key:"docs",         lk:"tab_docs",    icon:"□", group:"secondary"},
 ];
 
 export default function RAGDashboard() {
@@ -50,6 +50,7 @@ export default function RAGDashboard() {
   const [kbStats, setKbStats]             = useState(null);
   const [kbRebuilding, setKbRebuilding]   = useState(false);
   const [backendReady, setBackendReady]   = useState(false);
+  const [pipelineConfig, setPipelineConfig] = useState(null);
   const [isNarrow, setIsNarrow]           = useState(false);
 
   const [feedbackGiven, setFeedbackGiven] = useState(null);
@@ -139,6 +140,7 @@ export default function RAGDashboard() {
 
   const handleMessage = useCallback((evt)=>{
     const msg=JSON.parse(evt.data);
+    if (msg.type==="pipeline_start") setPipelineConfig(msg.config||null);
     if (msg.type==="answer_token")    { setAnswer(msg.full_answer_so_far||""); return; }
     if (msg.type==="pipeline_complete") {
       setDocs(msg.retrieved_docs||[]);
@@ -175,6 +177,7 @@ export default function RAGDashboard() {
     setActiveTab("process");
     setFeedbackGiven(null); setFeedbackComment("");
     setAgentRoute(null); setAgentSubResults([]);
+    setPipelineConfig(null);
 
     const ws = new WebSocket(backendWsUrl(agentMode ? "/ws/agent" : "/ws/query"));
     wsRef.current=ws;
@@ -288,6 +291,8 @@ export default function RAGDashboard() {
               agentSubResults={agentSubResults}
               iterations={iterations}
               answer={answer}
+              docs={docs}
+              onOpenEvidence={()=>setActiveTab("results")}
               feedbackGiven={feedbackGiven}
               feedbackLoading={feedbackLoading}
               feedbackComment={feedbackComment}
@@ -297,7 +302,13 @@ export default function RAGDashboard() {
           )}
 
           {activeTab==="results" && (
-            <ResultsTab docs={docs} status={status} lang={lang} t={t}/>
+            <ResultsTab
+              docs={docs}
+              status={status}
+              lang={lang}
+              t={t}
+              rerankerActive={Boolean(pipelineConfig?.cross_encoder)}
+            />
           )}
 
           {activeTab==="metrics" && (
@@ -306,6 +317,10 @@ export default function RAGDashboard() {
               iterations={iterations}
               strategy={strategy}
               conversationHistory={conversationHistory}
+              docs={docs}
+              elapsed={elapsed}
+              pipelineConfig={pipelineConfig}
+              isNarrow={isNarrow}
               lang={lang}
               t={t}
             />

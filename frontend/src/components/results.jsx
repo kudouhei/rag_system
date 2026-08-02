@@ -3,7 +3,7 @@ import { tL } from "../i18n/index.jsx";
 import { ScoreBar, Tag } from "./ui.jsx";
 
 // ── Doc Card ──────────────────────────────────────────────────────────────────
-export const DocCard = ({ doc, rank, lang }) => (
+export const DocCard = ({ doc, rank, lang, rerankerActive = false }) => (
   <div style={{
     background:C.surface, border:`1px solid ${C.borderBright}`,
     borderRadius:8, padding:"12px 14px", marginBottom:8,
@@ -17,10 +17,17 @@ export const DocCard = ({ doc, rank, lang }) => (
         }}>#{rank}</span>
         <span style={{fontWeight:600, fontSize:13, color:C.text}}>{doc.title}</span>
       </div>
-      <span style={{
-        fontSize:14, fontWeight:800,
-        color: doc.final_score>0.75?C.green:doc.final_score>0.55?C.accent:C.orange,
-      }}>{(doc.final_score*100).toFixed(1)}%</span>
+      <div style={{textAlign:"right"}}>
+        <div style={{
+          fontSize:13, fontWeight:800, fontFamily:"monospace",
+          color: doc.final_score>0.75?C.green:doc.final_score>0.55?C.accent:C.orange,
+        }}>{Number(doc.final_score||0).toFixed(3)}</div>
+        <div style={{fontSize:9, color:C.textDim}}>
+          {rerankerActive
+            ? (lang==="en"?"reranker score":"精排分数")
+            : (lang==="en"?"ranking score":"排序分数")}
+        </div>
+      </div>
     </div>
     <p style={{fontSize:12, color:C.textMid, margin:"0 0 8px", lineHeight:1.6}}>{doc.content}</p>
     {doc.source && (
@@ -43,9 +50,9 @@ export const DocCard = ({ doc, rank, lang }) => (
       {doc.tags?.map(t => <Tag key={t} label={t}/>)}
     </div>
     <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:6}}>
-      {doc.embedding_score>0 && <ScoreBar value={doc.embedding_score} color={C.accent}  label={tL(lang,"score_vec")}/>}
-      {doc.bm25_score>0     && <ScoreBar value={doc.bm25_score}      color={C.green}   label={tL(lang,"score_bm25")}/>}
-      {doc.graph_score>0    && <ScoreBar value={doc.graph_score}     color="#059669"   label={tL(lang,"score_graph")}/>}
+      {doc.embedding_score>0 && <ScoreBar value={doc.embedding_score} color={C.accent} label={tL(lang,"score_vec")} valueFormat="decimal"/>}
+      {doc.bm25_score>0     && <ScoreBar value={doc.bm25_score} color={C.green} label={tL(lang,"score_bm25")} valueFormat="decimal"/>}
+      {doc.graph_score>0    && <ScoreBar value={doc.graph_score} color="#059669" label={tL(lang,"score_graph")} valueFormat="decimal"/>}
     </div>
   </div>
 );
@@ -59,15 +66,14 @@ export const RagasPanel = ({ metrics, lang }) => {
     { vk:"answer_relevance",   lk:"ar_label", dk:"ar_desc", color:C.purple  },
     { vk:"answer_faithfulness",lk:"af_label", dk:"af_desc", color:C.orange  },
   ];
-  const overall = rows.reduce((s,r)=>s+(metrics[r.vk]||0),0)/rows.length;
   return (
     <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:8, padding:16}}>
       <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16}}>
         <span style={{fontSize:11, color:C.textMid, fontWeight:700, letterSpacing:"0.08em"}}>
           {tL(lang,"ragasTitle")}&nbsp;
         </span>
-        <span style={{fontSize:13, fontWeight:800, color:overall>0.75?C.green:overall>0.55?C.accent:C.orange}}>
-          {tL(lang,"ragasOverall",(overall*100).toFixed(1))}
+        <span title={tL(lang,"proxyMetricTip")} style={{fontSize:11, fontWeight:700, color:C.orange}}>
+          {tL(lang,"proxyBadge")}
         </span>
       </div>
       {rows.map(r=>(
@@ -75,7 +81,7 @@ export const RagasPanel = ({ metrics, lang }) => {
           <span title={tL(lang,r.dk)} style={{fontSize:12, color:C.text, borderBottom:`1px dashed ${C.borderBright}`, cursor:"help", display:"inline-block", marginBottom:4}}>
             {tL(lang,r.lk)}
           </span>
-          <ScoreBar value={metrics[r.vk]||0} color={r.color}/>
+          <ScoreBar value={metrics[r.vk]||0} color={r.color} valueFormat="decimal"/>
         </div>
       ))}
     </div>

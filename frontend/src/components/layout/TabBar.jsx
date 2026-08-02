@@ -1,10 +1,15 @@
 import { C } from "../../config/theme";
 
 export const TabBar = ({ tabs, activeTab, setActiveTab, conversationHistory, t }) => (
-  <div style={{display:"flex", gap:4, borderBottom:`1px solid ${C.border}`, paddingBottom:8}}>
+  <div style={{
+    display:"flex", alignItems:"center", gap:4, flexWrap:"wrap",
+    borderBottom:`1px solid ${C.border}`, paddingBottom:8,
+  }}>
     {tabs.map(tab=>(
       <button key={tab.key} onClick={()=>setActiveTab(tab.key)} style={{
-        padding:"6px 16px", borderRadius:6, fontSize:12, fontWeight:600,
+        padding:tab.group==="primary"?"7px 16px":"7px 10px",
+        marginLeft:tab.group==="secondary"&&tab.key==="graph"?"auto":0,
+        borderRadius:7, fontSize:12, fontWeight:600,
         cursor:"pointer", fontFamily:"inherit",
         background: activeTab===tab.key?`${C.accent}12`:"transparent",
         color:       activeTab===tab.key?C.accent:C.textMid,

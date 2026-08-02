@@ -4,6 +4,63 @@ import { IterationTimeline } from "../results.jsx";
 import { Spinner } from "../ui.jsx";
 import { AnswerPanel } from "../feedback/AnswerPanel.jsx";
 
+const EvidenceSummary = ({ docs, status, lang, t, onOpenEvidence }) => (
+  <div style={{
+    background:C.surface, border:`1px solid ${C.borderBright}`,
+    borderRadius:10, padding:14, minWidth:0,
+  }}>
+    <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10}}>
+      <div style={{fontSize:10, color:C.textMid, fontWeight:700, letterSpacing:"0.1em"}}>
+        {t("evidenceSummary")}
+      </div>
+      {docs.length>0 && (
+        <button onClick={onOpenEvidence} style={{
+          border:"none", background:"transparent", color:C.accent,
+          cursor:"pointer", fontSize:10.5, fontWeight:700, fontFamily:"inherit",
+        }}>{t("viewAllEvidence")} →</button>
+      )}
+    </div>
+
+    {docs.length===0 ? (
+      <div style={{color:C.textDim, fontSize:12, padding:"26px 4px", textAlign:"center"}}>
+        {status==="running"?t("resEmpty_run"):t("evidenceEmpty")}
+      </div>
+    ) : (
+      <>
+        {docs.slice(0,3).map((doc,i)=>(
+          <button key={doc.id} onClick={onOpenEvidence} style={{
+            width:"100%", display:"block", textAlign:"left", cursor:"pointer",
+            background:C.bg, border:`1px solid ${C.border}`, borderRadius:8,
+            padding:"9px 10px", marginBottom:7, fontFamily:"inherit",
+          }}>
+            <div style={{display:"flex", alignItems:"center", gap:7, minWidth:0}}>
+              <span style={{
+                width:20, height:20, borderRadius:5, flexShrink:0,
+                display:"inline-flex", alignItems:"center", justifyContent:"center",
+                color:C.accent, background:`${C.accent}12`, fontSize:10, fontWeight:800,
+              }}>[{i+1}]</span>
+              <span style={{
+                flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis",
+                whiteSpace:"nowrap", color:C.text, fontSize:11.5, fontWeight:650,
+              }}>{doc.title}</span>
+              <span title={t("rankingScoreTip")} style={{
+                color:C.textMid, fontSize:10.5, fontFamily:"monospace",
+              }}>{Number(doc.final_score||0).toFixed(3)}</span>
+            </div>
+            <div style={{
+              marginTop:5, color:C.textDim, fontSize:10, overflow:"hidden",
+              textOverflow:"ellipsis", whiteSpace:"nowrap",
+            }}>{doc.source || (lang==="en"?"Source unavailable":"暂无来源信息")}</div>
+          </button>
+        ))}
+        <div style={{fontSize:10, color:C.textDim, lineHeight:1.5, marginTop:8}}>
+          ⓘ {t("rankingScoreTip")}
+        </div>
+      </>
+    )}
+  </div>
+);
+
 export const ProcessTab = ({
   lang,
   t,
@@ -16,46 +73,51 @@ export const ProcessTab = ({
   agentSubResults,
   iterations,
   answer,
+  docs,
+  onOpenEvidence,
   feedbackGiven,
   feedbackLoading,
   feedbackComment,
   setFeedbackComment,
   submitFeedback,
 }) => (
-  <div style={{
-    display:"grid",
-    gridTemplateColumns: isNarrow ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)",
-    gap:12,
-    minWidth:0,
-  }}>
-    <div style={{minWidth:0}}>
-      <div style={{
-        background:C.surface, border:`1px solid ${C.borderBright}`,
-        borderRadius:8, padding:12,
-        height:"min(420px, 45vh)",
-        overflowY:"auto",
-        minWidth:0, overflowX:"hidden",
-      }}>
-        <div style={{fontSize:10, color:C.textMid, fontWeight:700, letterSpacing:"0.1em", marginBottom:8}}>
-          {t("logTitle")} {status==="running"&&<span style={{display:"inline-flex",alignItems:"center",gap:6,marginLeft:6}}>
-            <Spinner size={14} color={C.accent}/>
-            <span style={{color:C.accent, fontWeight:800}}>{lang==="zh" ? "执行中" : "Running"}</span>
-          </span>}
-        </div>
-        {logs.length===0 && (
-          <div style={{color:C.textDim, fontSize:12, textAlign:"center", marginTop:40}}>{t("logEmpty")}</div>
-        )}
-        {logs.map((entry,i)=><LogEntry key={i} entry={entry} lang={lang}/>) }
-        <div ref={logsEndRef}/>
-      </div>
+  <div style={{display:"flex", flexDirection:"column", gap:12, minWidth:0}}>
+    <div style={{
+      display:"grid",
+      gridTemplateColumns:isNarrow?"minmax(0,1fr)":"minmax(0,1.7fr) minmax(280px,.8fr)",
+      gap:12, minWidth:0, alignItems:"start",
+    }}>
+      <AnswerPanel
+        answer={answer}
+        status={status}
+        lang={lang}
+        t={t}
+        docs={docs}
+        onOpenEvidence={onOpenEvidence}
+        maxHeight={isNarrow?"none":"calc(100vh - 230px)"}
+        showFeedback
+        feedbackGiven={feedbackGiven}
+        feedbackLoading={feedbackLoading}
+        feedbackComment={feedbackComment}
+        setFeedbackComment={setFeedbackComment}
+        submitFeedback={submitFeedback}
+      />
+      <EvidenceSummary
+        docs={docs}
+        status={status}
+        lang={lang}
+        t={t}
+        onOpenEvidence={onOpenEvidence}
+      />
+    </div>
 
-      {agentMode && agentRoute && (()=>{
+    {agentMode && agentRoute && (()=>{
         const routes = t("agent_routes");
         const ri = routes[agentRoute.route] || { label:agentRoute.route, color:C.textMid, icon:"•" };
         return (
           <div style={{
             background:`${ri.color}08`, border:`1px solid ${ri.color}33`,
-            borderRadius:8, padding:"10px 14px", marginTop:12,
+            borderRadius:8, padding:"10px 14px",
             display:"flex", alignItems:"center", gap:10,
           }}>
             <span style={{fontSize:18}}>{ri.icon}</span>
@@ -92,10 +154,10 @@ export const ProcessTab = ({
             </div>
           </div>
         );
-      })()}
+    })()}
 
-      {agentMode && agentSubResults.length > 0 && (
-        <div style={{background:C.surface, border:`1px solid ${C.purple}33`, borderRadius:8, padding:14, marginTop:12}}>
+    {agentMode && agentSubResults.length > 0 && (
+        <div style={{background:C.surface, border:`1px solid ${C.purple}33`, borderRadius:8, padding:14}}>
           <div style={{fontSize:10, color:C.purple, fontWeight:700, letterSpacing:"0.1em", marginBottom:8}}>
             {t("agent_sub_title")}
           </div>
@@ -114,43 +176,51 @@ export const ProcessTab = ({
             </div>
           ))}
         </div>
-      )}
+    )}
 
-      <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:8, padding:14, marginTop:12}}>
-        <div style={{fontSize:10, color:C.textMid, fontWeight:700, letterSpacing:"0.1em", marginBottom:10}}>
-          {t("iterTitle")}
+    <details style={{
+      background:C.surface, border:`1px solid ${C.borderBright}`,
+      borderRadius:10, padding:"11px 14px",
+    }}>
+      <summary style={{
+        cursor:"pointer", color:C.textMid, fontSize:11, fontWeight:750,
+        letterSpacing:"0.07em", userSelect:"none",
+      }}>
+        {t("technicalDetails")}
+        <span style={{marginLeft:8, fontWeight:500, color:C.textDim, letterSpacing:0}}>
+          {status==="running"
+            ? <><Spinner size={11} color={C.accent}/> {t("runningStatus")}</>
+            : t("technicalSummary", logs.length, iterations.length)}
+        </span>
+      </summary>
+      <div style={{
+        display:"grid", gridTemplateColumns:isNarrow?"1fr":"1.5fr 1fr",
+        gap:12, marginTop:12,
+      }}>
+        <div style={{
+          background:C.bg, border:`1px solid ${C.border}`,
+          borderRadius:8, padding:12, maxHeight:360, overflowY:"auto",
+          minWidth:0, overflowX:"hidden",
+        }}>
+          <div style={{fontSize:10, color:C.textMid, fontWeight:700, letterSpacing:"0.1em", marginBottom:8}}>
+            {t("logTitle")}
+          </div>
+          {logs.length===0 && (
+            <div style={{color:C.textDim, fontSize:12, textAlign:"center", marginTop:30}}>{t("logEmpty")}</div>
+          )}
+          {logs.map((entry,i)=><LogEntry key={i} entry={entry} lang={lang}/>)}
+          <div ref={logsEndRef}/>
         </div>
-        <IterationTimeline iterations={iterations}/>
-        {iterations.length===0 && (
-          <div style={{color:C.textDim, fontSize:12, textAlign:"center", marginTop:20}}>{t("iterEmpty")}</div>
-        )}
+        <div style={{background:C.bg, border:`1px solid ${C.border}`, borderRadius:8, padding:12}}>
+          <div style={{fontSize:10, color:C.textMid, fontWeight:700, letterSpacing:"0.1em", marginBottom:10}}>
+            {t("iterTitle")}
+          </div>
+          <IterationTimeline iterations={iterations}/>
+          {iterations.length===0 && (
+            <div style={{color:C.textDim, fontSize:12, textAlign:"center", marginTop:20}}>{t("iterEmpty")}</div>
+          )}
+        </div>
       </div>
-    </div>
-
-    {!isNarrow && (
-      <AnswerPanel
-        answer={answer}
-        status={status}
-        lang={lang}
-        t={t}
-        maxHeight="calc(100vh - 260px)"
-        showFeedback
-        feedbackGiven={feedbackGiven}
-        feedbackLoading={feedbackLoading}
-        feedbackComment={feedbackComment}
-        setFeedbackComment={setFeedbackComment}
-        submitFeedback={submitFeedback}
-      />
-    )}
-
-    {isNarrow && (
-      <AnswerPanel
-        answer={answer}
-        status={status}
-        lang={lang}
-        t={t}
-        maxHeight="min(520px, 55vh)"
-      />
-    )}
+    </details>
   </div>
 );
