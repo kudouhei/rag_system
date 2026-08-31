@@ -28,8 +28,8 @@ async def startup() -> None:
     if not raw_docs:
         logger.warning("No documents found in %s", DOCS_DIR)
         raw_docs = [{
-            "id": "placeholder", "title": "暂无文档",
-            "content": f"请在 {DOCS_DIR} 目录中添加 .txt/.md/.pdf 文件后重启服务。",
+            "id": "placeholder", "title": "No documents indexed",
+            "content": f"Add regulatory .txt/.md/.pdf documents to {DOCS_DIR} and restart the service.",
             "source": "", "tags": [], "embedding_score": 0.0, "bm25_score": 0.0,
             "word_count": 0, "char_count": 0, "chunk_index": 0, "total_chunks": 1,
         }]

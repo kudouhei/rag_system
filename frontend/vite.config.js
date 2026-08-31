@@ -19,6 +19,7 @@ export default defineConfig({
       '/graph': backend,
       '/docs_list': backend,
       '/docs': backend,
+      '/compliance_check': backend,
     },
   },
 })

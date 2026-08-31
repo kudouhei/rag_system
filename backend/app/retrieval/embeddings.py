@@ -74,8 +74,12 @@ def save_emb_cache(docs: List[dict], embs: np.ndarray) -> None:
 
 def encode_text(text: str) -> np.ndarray:
     """Encode arbitrary text (with BGE retrieval prefix if applicable)."""
-    if "bge" in EMBED_MODEL_NAME.lower():
+    model_lower = EMBED_MODEL_NAME.lower()
+    if "bge" in model_lower and "-zh" in model_lower:
         text = "为这个句子生成表示以用于检索相关文章：" + text
+    elif "bge" in model_lower and "-en" in model_lower:
+        # BGE English models expect this instruction prefix on the *query* side only.
+        text = "Represent this sentence for searching relevant passages: " + text
     return state.embed_model.encode([text], normalize_embeddings=True)[0].astype(np.float32)
 
 

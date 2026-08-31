@@ -351,10 +351,33 @@ export const DocsTab = ({ lang, kbStats, onRefresh }) => {
 
                   {/* Info */}
                   <div style={{flex:1, minWidth:0}}>
-                    <div style={{
-                      fontSize:12, fontWeight:600, color:C.text,
-                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
-                    }} title={src.source}>{src.source}</div>
+                    <div style={{display:"flex", alignItems:"center", gap:6, flexWrap:"wrap"}}>
+                      <div style={{
+                        fontSize:12, fontWeight:600, color:C.text,
+                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:260,
+                      }} title={src.source}>{src.source}</div>
+                      {src.regulation_number && (
+                        <span style={{
+                          fontSize:10, fontWeight:700, color:C.accent,
+                          background:`${C.accent}12`, border:`1px solid ${C.accent}33`,
+                          borderRadius:4, padding:"1px 6px",
+                        }}>{src.regulation_number}</span>
+                      )}
+                      {src.risk_level && (
+                        <span style={{
+                          fontSize:10, fontWeight:700,
+                          color: src.risk_level==="high" ? C.red : src.risk_level==="medium" ? C.orange : C.green,
+                          background: `${src.risk_level==="high" ? C.red : src.risk_level==="medium" ? C.orange : C.green}12`,
+                          border: `1px solid ${src.risk_level==="high" ? C.red : src.risk_level==="medium" ? C.orange : C.green}33`,
+                          borderRadius:4, padding:"1px 6px", textTransform:"uppercase",
+                        }}>{src.risk_level}</span>
+                      )}
+                    </div>
+                    {src.issuing_authority && (
+                      <div style={{fontSize:10.5, color:C.textMid, marginTop:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>
+                        {src.issuing_authority}{src.effective_date ? ` · ${lang==="en"?"effective":"生效"} ${src.effective_date}` : ""}
+                      </div>
+                    )}
                     <div style={{fontSize:11, color:C.textDim, marginTop:2, display:"flex", gap:8}}>
                       <span>{tL(lang,"docsChunks", src.chunks)}</span>
                       <span>{tL(lang,"docsWords",  src.words)}</span>

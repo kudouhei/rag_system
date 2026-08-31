@@ -39,21 +39,22 @@ from app.retrieval.reranker import rerank_docs
 
 async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
     t0   = time.time()
-    lang = req.language or "zh"
+    lang = req.language or "en"
 
-    # ── Enterprise context → retrieval augmentation ───────────────────────────
-    # In real deployments, ticket/product/version/env strongly disambiguate the intent.
-    # We incorporate them as light-weight query augmentation (safe, no extra calls).
+    # ── Regulatory analyst context → retrieval augmentation ──────────────────
+    # Jurisdiction/product-type/regulation filters strongly disambiguate intent
+    # in a multi-jurisdiction regulatory corpus. Incorporated as light-weight
+    # query augmentation (safe, no extra LLM calls).
     def _augment_query(q: str) -> str:
         parts = []
-        if req.product:
-            parts.append(f"product={req.product}")
-        if req.version:
-            parts.append(f"version={req.version}")
-        if req.environment:
-            parts.append(f"env={req.environment}")
-        if req.ticket_id:
-            parts.append(f"ticket={req.ticket_id}")
+        if req.jurisdiction:
+            parts.append(f"jurisdiction={req.jurisdiction}")
+        if req.product_type:
+            parts.append(f"product_type={req.product_type}")
+        if req.regulation_number:
+            parts.append(f"regulation={req.regulation_number}")
+        if req.document_type:
+            parts.append(f"document_type={req.document_type}")
         if not parts:
             return q
         prefix = " ".join(parts)
@@ -76,14 +77,14 @@ async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
             "cross_encoder":    state.cross_encoder is not None,
             "graph_nodes":      len(state.KNOWLEDGE_GRAPH["nodes"]),
             "language":         lang,
-            # Enterprise context (for audit & evaluation stratification)
+            # Regulatory context (for audit & evaluation stratification)
             "tenant_id":        req.tenant_id,
             "user_id":          req.user_id,
             "user_role":        req.user_role,
-            "ticket_id":        req.ticket_id,
-            "product":          req.product,
-            "version":          req.version,
-            "environment":      req.environment,
+            "jurisdiction":     req.jurisdiction,
+            "product_type":     req.product_type,
+            "regulation_number": req.regulation_number,
+            "document_type":    req.document_type,
         },
     }))
 
@@ -285,7 +286,7 @@ async def query_rag(
     enable_graph: bool = False,
     top_k: int = 5,
     confidence_threshold: float = 0.55,
-    language: str = "zh",
+    language: str = "en",
 ) -> dict:
     """
     Full RAG pipeline without WebSocket streaming.
@@ -342,11 +343,8 @@ async def query_rag(
         results = await loop.run_in_executor(None, rerank_docs, query, results)
 
     # ── Answer generation (non-streaming) ────────────────────────────────
-    doc_label = "文档" if language == "zh" else "Document"
-    context = "\n\n".join(
-        f"【{doc_label}{i + 1}】{d['title']}\n{d['content']}"
-        for i, d in enumerate(results[:4])
-    )
+    from app.pipeline.utils import format_doc_context
+    context = format_doc_context(results[:4], language)
     answer = ""
     if state.llm_client:
         answer = await llm_call(

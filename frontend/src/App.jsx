@@ -13,21 +13,23 @@ import { ProcessTab } from "./components/process/ProcessTab.jsx";
 import { ResultsTab } from "./components/tabs/ResultsTab.jsx";
 import { MetricsTab } from "./components/tabs/MetricsTab.jsx";
 import { GraphTab } from "./components/tabs/GraphTab.jsx";
+import { ComplianceTab } from "./components/tabs/ComplianceTab.jsx";
 
 const TABS = [
-  {key:"process",      lk:"tab_process", icon:"✦", group:"primary"},
-  {key:"results",      lk:"tab_results", icon:"▤", group:"primary"},
-  {key:"metrics",      lk:"tab_metrics", icon:"◫", group:"primary"},
-  {key:"graph",        lk:"tab_graph",   icon:"⌘", group:"secondary"},
-  {key:"conversation", lk:"tab_conv",    icon:"◌", group:"secondary"},
-  {key:"docs",         lk:"tab_docs",    icon:"□", group:"secondary"},
+  {key:"process",      lk:"tab_process",    icon:"✦", group:"primary"},
+  {key:"results",      lk:"tab_results",    icon:"▤", group:"primary"},
+  {key:"metrics",      lk:"tab_metrics",    icon:"◫", group:"primary"},
+  {key:"compliance",   lk:"tab_compliance", icon:"⚖", group:"primary"},
+  {key:"graph",        lk:"tab_graph",      icon:"⌘", group:"secondary"},
+  {key:"conversation", lk:"tab_conv",       icon:"◌", group:"secondary"},
+  {key:"docs",         lk:"tab_docs",       icon:"□", group:"secondary"},
 ];
 
 export default function RAGDashboard() {
-  const [lang, setLang]                   = usePersistedState("lang", "zh");
+  const [lang, setLang]                   = usePersistedState("lang", "en");
   const t = useCallback((key,...args)=>tL(lang,key,...args),[lang]);
 
-  const [query, setQuery]                 = useState("忘记 SSO 密码或 MFA 丢失怎么办？需要提交什么工单？");
+  const [query, setQuery]                 = useState("We are launching a money market fund with daily redemption but no swing pricing mechanism. Is this compliant?");
   const [strategy, setStrategy]           = usePersistedState("strategy", "adaptive");
   const [enableIterative, setEnableIterative] = usePersistedState("enableIterative", true);
   const [enableConversation, setEnableConversation] = usePersistedState("enableConversation", false);
@@ -324,6 +326,10 @@ export default function RAGDashboard() {
               lang={lang}
               t={t}
             />
+          )}
+
+          {activeTab==="compliance" && (
+            <ComplianceTab lang={lang}/>
           )}
 
           {activeTab==="graph" && (

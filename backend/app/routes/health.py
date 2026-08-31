@@ -53,6 +53,15 @@ async def get_stats():
                 "file_size_kb": d.get("file_size_kb", 0),
                 "last_modified": d.get("file_mtime", ""),
                 "tags":       d.get("tags", []),
+                # ── Regulatory metadata (from frontmatter, if present) ──
+                "regulation_number": d.get("regulation_number"),
+                "issuing_authority": d.get("issuing_authority"),
+                "jurisdiction":      d.get("jurisdiction"),
+                "document_type":     d.get("document_type"),
+                "product_type":      d.get("product_type"),
+                "risk_level":        d.get("risk_level"),
+                "effective_date":    d.get("effective_date"),
+                "status":            d.get("status"),
             }
         sources[src]["chunks"] += 1
         sources[src]["words"]  += d.get("word_count", 0)
@@ -131,6 +140,9 @@ async def knowledge_asset_inventory():
                 "last_modified": d.get("file_mtime", ""),
                 "mtime": d.get("mtime", now_ts),
                 "tags": d.get("tags", []),
+                "regulation_number": d.get("regulation_number"),
+                "issuing_authority": d.get("issuing_authority"),
+                "risk_level": d.get("risk_level"),
                 # analytics
                 "usage_hits": 0,          # how often this source appeared in retrieved docs
                 "usage_queries": 0,        # how many retrieval events included this source (unique per event)
@@ -207,6 +219,9 @@ async def knowledge_asset_inventory():
             "file_size_kb": s.get("file_size_kb", 0),
             "last_modified": s.get("last_modified", ""),
             "tags": s.get("tags", []),
+            "regulation_number": s.get("regulation_number"),
+            "issuing_authority": s.get("issuing_authority"),
+            "risk_level": s.get("risk_level"),
             "stale": stale,
             "usage_hits": s["usage_hits"],
             "usage_queries": s["usage_queries"],

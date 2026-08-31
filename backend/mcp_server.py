@@ -1,8 +1,9 @@
 """
-Adaptive RAG — MCP Server
-=========================
-Exposes the enterprise knowledge base as MCP tools so Claude, Cursor,
-and any MCP-compatible AI client can search internal documents directly.
+Regulatory Document Intelligence RAG — MCP Server
+====================================================
+Exposes the fund/regulatory compliance knowledge base as MCP tools so Claude,
+Cursor, and any MCP-compatible AI client can search regulatory documents
+directly.
 
 Tools
 ─────
@@ -64,13 +65,14 @@ async def rag_lifespan(server):
 
 
 mcp = FastMCP(
-    name="企业知识库 RAG",
+    name="Regulatory Document Intelligence RAG",
     instructions=(
-        "This server provides access to an enterprise knowledge base using "
-        "Adaptive RAG (Hybrid Dense-Sparse Retrieval · Cross-Encoder Reranking). "
-        "Use `search_knowledge_base` to ask questions and get grounded answers with citations. "
-        "Use `retrieve_documents` when you only need raw document chunks. "
-        "Use `list_documents` to explore what topics are covered."
+        "This server provides access to a fund/asset-management regulatory compliance "
+        "knowledge base using Adaptive RAG (Hybrid Dense-Sparse Retrieval · Cross-Encoder "
+        "Reranking). Use `search_knowledge_base` to ask questions and get grounded answers "
+        "with citations to regulation numbers and articles. "
+        "Use `retrieve_documents` when you only need raw regulatory clause excerpts. "
+        "Use `list_documents` to explore which regulations/circulars are covered."
     ),
     lifespan=rag_lifespan,
 )
@@ -84,22 +86,22 @@ async def search_knowledge_base(
     query: str,
     top_k: int = 5,
     strategy: str = "adaptive",
-    language: str = "zh",
+    language: str = "en",
 ) -> str:
     """
-    Search the enterprise knowledge base and return a grounded answer.
+    Search the fund/regulatory compliance knowledge base and return a grounded answer.
 
     Runs the full Adaptive RAG pipeline:
       1. Hybrid dense+sparse retrieval with iterative reflection
       2. Cross-encoder reranking
-      3. LLM answer generation with source citations
+      3. LLM answer generation with source citations (regulation number + article)
 
     Args:
-        query:       The question to answer (Chinese or English).
+        query:       The regulatory/compliance question to answer (English or Chinese).
         top_k:       Number of document chunks to retrieve (default 5).
         strategy:    Retrieval strategy — "adaptive" | "hybrid" | "vector" | "bm25".
                      "adaptive" automatically cycles strategies on low confidence.
-        language:    Response language — "zh" (default) or "en".
+        language:    Response language — "en" (default) or "zh".
 
     Returns:
         Formatted string with the LLM answer followed by source citations.
@@ -169,7 +171,7 @@ async def retrieve_documents(
         strategy=strategy,
         enable_iterative=False,
         top_k=top_k,
-        language="zh",
+        language="en",
     )
 
     docs_out = [

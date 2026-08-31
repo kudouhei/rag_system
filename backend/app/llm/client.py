@@ -46,7 +46,7 @@ async def llm_call(messages: list, max_tokens: int = 100, temperature: float = 0
         return ""
 
 
-async def llm_rewrite_query(original: str, failure_reason: str, lang: str = "zh") -> str:
+async def llm_rewrite_query(original: str, failure_reason: str, lang: str = "en") -> str:
     result = await llm_call(
         messages=[
             {"role": "system", "content": _t("sys_rewrite", lang)},
@@ -63,14 +63,11 @@ async def llm_stream_answer(
     query: str,
     docs: List[dict],
     history: List[dict],
-    lang: str = "zh",
+    lang: str = "en",
 ) -> str:
     """Stream LLM answer token-by-token; supports multi-turn conversation history."""
-    doc_label = "文档" if lang == "zh" else "Document"
-    context = "\n\n".join(
-        f"【{doc_label}{i + 1}】{d['title']}\n{d['content']}"
-        for i, d in enumerate(docs[:4])
-    )
+    from app.pipeline.utils import format_doc_context
+    context = format_doc_context(docs[:4], lang)
     system_prompt = _t("sys_answer", lang)
     user_prompt   = _t("usr_answer", lang, context=context, query=query)
 

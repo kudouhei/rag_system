@@ -34,9 +34,9 @@ _ROUTER_SYS: dict = {
         "你是智能问题路由器。将用户查询分配到最合适的路由（返回严格JSON，无多余文字）。\n\n"
         "路由类型：\n"
         '• "direct"   — 通用知识、简单定义、创意写作、编程问题（LLM 可直接回答）\n'
-        '• "rag"      — 需查询企业内部文档/专属知识库才能回答\n'
+        '• "rag"      — 需查询基金监管法规/合规文档知识库才能回答\n'
         '• "realtime" — 需实时数据：当前时间/日期、数学计算、网络搜索\n'
-        '• "complex"  — 需拆分为多个子问题才能完整回答的复杂分析题\n\n'
+        '• "complex"  — 需拆分为多个子问题才能完整回答的复杂合规分析题\n\n'
         "返回格式：\n"
         '{"route":"direct|rag|realtime|complex","reason":"路由原因（10字以内）",'
         '"sub_queries":["子问题1","子问题2"],"tools":["datetime","calculator","web_search"]}\n\n'
@@ -47,9 +47,9 @@ _ROUTER_SYS: dict = {
         "(return strict JSON, no extra text).\n\n"
         "Routes:\n"
         '• "direct"   — General knowledge, definitions, creative/coding tasks (LLM answers directly)\n'
-        '• "rag"      — Questions about internal company docs or proprietary knowledge base\n'
+        '• "rag"      — Questions about fund/asset-management regulatory documents or compliance rules\n'
         '• "realtime" — Needs real-time data: current time/date, math calculation, web search\n'
-        '• "complex"  — Needs decomposition into multiple sub-questions for complete analysis\n\n'
+        '• "complex"  — Needs decomposition into multiple sub-questions for a complete compliance analysis\n\n'
         "Return format:\n"
         '{"route":"direct|rag|realtime|complex","reason":"brief reason (≤8 words)",'
         '"sub_queries":["sub-q 1","sub-q 2"],"tools":["datetime","calculator","web_search"]}\n\n'
@@ -58,7 +58,7 @@ _ROUTER_SYS: dict = {
 }
 
 
-async def route_query(query: str, language: str = "zh") -> dict:
+async def route_query(query: str, language: str = "en") -> dict:
     """Query router with fast heuristics + LLM fallback (with timeout)."""
     import re as _re
     default = {
@@ -76,16 +76,20 @@ async def route_query(query: str, language: str = "zh") -> dict:
         return {"route": "realtime", "reason": "公式/时间工具" if language == "zh" else "math/time tool",
                 "sub_queries": [], "tools": ["calculator" if _re.search(r"[\d]+\s*[\+\-\*\/\^]\s*[\d]+", q) else "datetime"]}
 
-    # Company/internal KB intents (IT/Sec/Compliance/On-call keywords)
+    # Fund/regulatory KB intents (prospectus, NAV, AML/KYC, custody, liquidity, etc.)
     kb_keywords = [
-        "sso", "mfa", "vpn", "ztna", "权限", "access", "rbac", "abac",
-        "密钥", "token", "secrets", "加密", "encryption",
-        "日志", "log", "留存", "retention", "脱敏", "redaction",
-        "gdpr", "dsar", "数据分级", "pii", "隐私", "合规",
-        "事故", "p0", "p1", "on-call", "回滚", "发布", "rollout", "rollback",
+        "prospectus", "nav", "valuation", "aml", "kyc", "custody", "custodian",
+        "depositary", "liquidity", "redemption", "gate", "side pocket",
+        "marketing", "advertising", "esg", "sustainability", "sfdr",
+        "passporting", "cross-border", "governance", "conflict of interest",
+        "outsourcing", "business continuity", "complaint", "best execution",
+        "reporting", "filing", "regulation", "regulatory", "compliance",
+        "fund manager", "money market fund", "mfca", "reg-fm", "circular",
+        "enforcement", "招募说明书", "净值", "估值", "反洗钱", "托管",
+        "流动性", "赎回", "合规", "监管", "基金",
     ]
-    if any(k in ql for k in kb_keywords) or any(k in q for k in ["权限", "密钥", "日志", "合规", "数据泄露", "回滚", "发布", "事故"]):
-        return {"route": "rag", "reason": "命中内部知识关键词" if language == "zh" else "internal KB keywords",
+    if any(k in ql for k in kb_keywords):
+        return {"route": "rag", "reason": "命中监管知识库关键词" if language == "zh" else "regulatory KB keywords",
                 "sub_queries": [], "tools": []}
 
     # If LLM is unavailable, stop here.
@@ -136,7 +140,7 @@ async def run_agentic_pipeline(ws: WebSocket, req: QueryRequest) -> None:
       complex  → Multi-step decomposition → per-subtask RAG → synthesis
     """
     t0   = time.time()
-    lang = req.language or "zh"
+    lang = req.language or "en"
 
     # ── Step 1: Route ──────────────────────────────────────────────────────
     await ws.send_text(json.dumps({
