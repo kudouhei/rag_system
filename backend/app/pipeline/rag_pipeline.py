@@ -17,7 +17,6 @@ import json
 import time
 from typing import List
 
-import numpy as np
 from fastapi import WebSocket
 
 from app.core import state
@@ -27,11 +26,8 @@ from app.core.schemas import QueryRequest
 from app.evaluation.ragas_eval import compute_ragas_metrics
 from app.llm.client import llm_call, llm_rewrite_query, llm_stream_answer
 from app.pipeline.utils import _diagnose_failure, _iter_summary
-from app.retrieval.bm25_index import compute_bm25_scores
-from app.retrieval.embeddings import compute_embedding_scores
-from app.retrieval.fusion import fuse_scores
-from app.retrieval.graph_rag import compute_graph_scores
 from app.retrieval.reranker import rerank_docs
+from app.retrieval.scoring import build_scored_docs, compute_score_arrays
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Streaming pipeline — /ws/query
@@ -102,28 +98,8 @@ async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
                           iteration=iteration, strategy=strategy, query=current_query),
         }))
 
-        loop = asyncio.get_event_loop()
-        emb_scores = await loop.run_in_executor(None, compute_embedding_scores, current_query)
-        bm25_arr   = await loop.run_in_executor(None, compute_bm25_scores, current_query)
-        graph_arr  = (await loop.run_in_executor(None, compute_graph_scores, current_query)
-                      if req.enable_graph else np.zeros(len(state.KNOWLEDGE_BASE), dtype=np.float32))
-        final_arr  = fuse_scores(emb_scores, bm25_arr, graph_arr, strategy, req.enable_graph)
-
-        docs_scored = []
-        for idx, doc in enumerate(state.KNOWLEDGE_BASE):
-            d  = doc.copy()
-            es = float(emb_scores[idx])
-            bs = float(bm25_arr[idx])
-            gs = float(graph_arr[idx])
-            if strategy == "vector":
-                d.update(embedding_score=es, bm25_score=0.0, graph_score=0.0, final_score=es)
-            elif strategy == "bm25":
-                d.update(embedding_score=0.0, bm25_score=bs, graph_score=0.0, final_score=bs)
-            else:
-                d.update(embedding_score=es, bm25_score=bs, graph_score=gs,
-                         final_score=float(final_arr[idx]))
-            d["strategy_used"] = strategy
-            docs_scored.append(d)
+        emb_scores, bm25_arr, graph_arr = await compute_score_arrays(current_query, req.enable_graph)
+        docs_scored = build_scored_docs(emb_scores, bm25_arr, graph_arr, strategy, req.enable_graph)
 
         # Stream top-10 scores to UI
         top10 = sorted(docs_scored, key=lambda x: x["final_score"], reverse=True)[:10]
@@ -306,27 +282,8 @@ async def query_rag(
         if strat == "adaptive":
             strat = ["hybrid", "vector", "bm25"][min(iteration - 1, 2)]
 
-        emb_scores = await loop.run_in_executor(None, compute_embedding_scores, current_query)
-        bm25_arr   = await loop.run_in_executor(None, compute_bm25_scores, current_query)
-        graph_arr  = (await loop.run_in_executor(None, compute_graph_scores, current_query)
-                      if enable_graph else np.zeros(len(state.KNOWLEDGE_BASE), dtype=np.float32))
-        final_arr  = fuse_scores(emb_scores, bm25_arr, graph_arr, strat, enable_graph)
-
-        docs_scored = []
-        for idx, doc in enumerate(state.KNOWLEDGE_BASE):
-            d  = doc.copy()
-            es = float(emb_scores[idx])
-            bs = float(bm25_arr[idx])
-            gs = float(graph_arr[idx])
-            if strat == "vector":
-                d.update(embedding_score=es, bm25_score=0.0, graph_score=0.0, final_score=es)
-            elif strat == "bm25":
-                d.update(embedding_score=0.0, bm25_score=bs, graph_score=0.0, final_score=bs)
-            else:
-                d.update(embedding_score=es, bm25_score=bs, graph_score=gs,
-                         final_score=float(final_arr[idx]))
-            d["strategy_used"] = strat
-            docs_scored.append(d)
+        emb_scores, bm25_arr, graph_arr = await compute_score_arrays(current_query, enable_graph)
+        docs_scored = build_scored_docs(emb_scores, bm25_arr, graph_arr, strat, enable_graph)
 
         results   = sorted(docs_scored, key=lambda x: x["final_score"], reverse=True)[:top_k]
         top_score = results[0]["final_score"] if results else 0.0
