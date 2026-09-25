@@ -244,13 +244,8 @@ async def run_rag_pipeline(ws: WebSocket, req: QueryRequest) -> None:
         "final_answer":      full_answer,
         "retrieved_docs":    final_docs,
         "metrics": {
-            # Retrieval-stage recall estimates
-            "baseline_recall":   0.61,
-            "iterative_recall":  round(min(0.61 + 0.05 * len(all_iterations), 0.80), 3),
-            "fusion_recall":     round(min(0.61 + 0.05 * len(all_iterations) + 0.03, 0.83), 3),
-            "rerank_recall":     round(min(0.61 + 0.05 * len(all_iterations) + 0.05, 0.85), 3),
             "final_confidence":  round(final_conf, 3),
-            # RAGAS metrics
+            # RAGAS-style online proxy metrics
             **ragas,
         },
     }))
@@ -287,11 +282,16 @@ async def query_rag(
     top_k: int = 5,
     confidence_threshold: float = 0.55,
     language: str = "en",
+    generate_answer: bool = True,
 ) -> dict:
     """
     Full RAG pipeline without WebSocket streaming.
     Returns a dict with keys: answer, docs, metrics, elapsed, iterations.
     Used by mcp_server.py and the agentic pipeline's "complex" route.
+
+    Set generate_answer=False to skip LLM answer generation and RAGAS
+    evaluation entirely (e.g. for a retrieval-only tool call) — avoids the
+    wasted LLM round-trip when the caller only wants ranked document chunks.
     """
     t0 = time.time()
     current_query = query
@@ -342,24 +342,27 @@ async def query_rag(
     if state.cross_encoder is not None and results:
         results = await loop.run_in_executor(None, rerank_docs, query, results)
 
-    # ── Answer generation (non-streaming) ────────────────────────────────
-    from app.pipeline.utils import format_doc_context
-    context = format_doc_context(results[:4], language)
     answer = ""
-    if state.llm_client:
-        answer = await llm_call(
-            messages=[
-                {"role": "system", "content": _t("sys_answer", language)},
-                {"role": "user",   "content": _t("usr_answer", language, context=context, query=query)},
-            ],
-            max_tokens=1500,
-            temperature=0.7,
-        )
-    elif results:
-        answer = results[0]["content"]
+    ragas: dict = {}
 
-    # ── RAGAS Evaluation ─────────────────────────────────────────────────
-    ragas = await loop.run_in_executor(None, compute_ragas_metrics, query, results[:4], answer)
+    if generate_answer:
+        # ── Answer generation (non-streaming) ────────────────────────────
+        from app.pipeline.utils import format_doc_context
+        context = format_doc_context(results[:4], language)
+        if state.llm_client:
+            answer = await llm_call(
+                messages=[
+                    {"role": "system", "content": _t("sys_answer", language)},
+                    {"role": "user",   "content": _t("usr_answer", language, context=context, query=query)},
+                ],
+                max_tokens=1500,
+                temperature=0.7,
+            )
+        elif results:
+            answer = results[0]["content"]
+
+        # ── RAGAS Evaluation ─────────────────────────────────────────────
+        ragas = await loop.run_in_executor(None, compute_ragas_metrics, query, results[:4], answer)
 
     final_docs = [
         {
