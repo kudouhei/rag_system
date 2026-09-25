@@ -22,7 +22,6 @@ Configuration
   Reads the same backend/.env as main.py (DEEPSEEK_API_KEY, EMBED_MODEL, etc.)
 """
 
-import asyncio
 import json
 import os
 import sys
@@ -34,7 +33,7 @@ _BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 if _BACKEND_DIR not in sys.path:
     sys.path.insert(0, _BACKEND_DIR)
 
-from fastmcp import FastMCP, Context
+from fastmcp import FastMCP
 
 # Import shared RAG state and functions from the backend modules directly.
 # We import lazily inside the lifespan so that heavy models (sentence-transformers,
@@ -172,6 +171,7 @@ async def retrieve_documents(
         enable_iterative=False,
         top_k=top_k,
         language="en",
+        generate_answer=False,   # retrieval-only — skip the LLM answer + RAGAS round-trip
     )
 
     docs_out = [
