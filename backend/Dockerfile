@@ -21,9 +21,11 @@ RUN groupadd --gid 10001 appgroup \
         --no-log-init \
         appuser
 
+COPY backend/requirements-cpu.txt /tmp/requirements-cpu.txt
 COPY backend/requirements.txt /tmp/requirements.txt
 
-RUN python -m pip install --no-cache-dir -r /tmp/requirements.txt
+RUN python -m pip install --no-cache-dir -r /tmp/requirements-cpu.txt \
+    && python -m pip install --no-cache-dir -r /tmp/requirements.txt
 
 COPY --chown=appuser:appgroup backend/ /app/
 
