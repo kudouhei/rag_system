@@ -38,6 +38,7 @@ _REG_METADATA_FIELDS = (
     "regulation_number", "issuing_authority", "jurisdiction", "document_type",
     "product_type", "risk_level", "effective_date", "status", "version",
     "amends", "related_regulation",
+    "access_scope", "tenant_id", "course_ids",
 )
 
 
