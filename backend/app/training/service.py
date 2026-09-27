@@ -82,6 +82,18 @@ async def build_training_explanation(
 
     option_explanations: list[TrainingOptionExplanation] = []
 
+    used_evidence_ids = {
+        evidence_id
+        for explanation in option_explanations
+        for evidence_id in explanation.evidence_ids
+    }
+
+    response_evidence = [
+        evidence
+        for evidence in materialized.evidence
+        if evidence.evidence_id in used_evidence_ids
+    ]
+
     for option in request.options:
         evidence_ids = materialized.evidence_ids_by_option.get(
             option.option_id,
@@ -111,7 +123,7 @@ async def build_training_explanation(
     )
 
     if (
-        not materialized.evidence
+        not response_evidence
         or has_missing_option_evidence
     ):
         status = "insufficient_evidence"
@@ -134,7 +146,7 @@ async def build_training_explanation(
         learner_result=learner_result,
         summary=summary,
         option_explanations=option_explanations,
-        evidence=materialized.evidence,
+        evidence=response_evidence,
         evidence_relevance_score=_compute_evidence_relevance_score(
             materialized
         ),
