@@ -23,3 +23,5 @@ bm25_index                           = None
 tokenize_fn                          = None
 llm_client                           = None
 KNOWLEDGE_GRAPH: dict                = {"nodes": {}, "edges": {}}
+
+corpus_version: str = "uninitialized"

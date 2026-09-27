@@ -19,6 +19,7 @@ from app.retrieval.bm25_index import init_bm25
 from app.retrieval.embeddings import compute_doc_embeddings, init_embed_model, load_emb_cache, save_emb_cache
 from app.retrieval.graph_rag import init_graph
 from app.retrieval.reranker import init_cross_encoder
+from app.core.provenance import compute_corpus_version
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ async def startup() -> None:
     await loop.run_in_executor(None, init_cross_encoder)
 
     state.KNOWLEDGE_BASE = docs
+    state.corpus_version = compute_corpus_version(docs)
     # Knowledge Graph — build in background so the API starts fast
     asyncio.create_task(init_graph(docs))
 
@@ -86,6 +88,7 @@ async def rebuild_index(force_reembed: bool = False) -> None:
     await loop.run_in_executor(None, init_bm25, docs)
     state.KNOWLEDGE_BASE = docs
     state.doc_embeddings = embs
+    state.corpus_version = compute_corpus_version(docs)
     # Rebuild graph in background so /reload returns quickly
     asyncio.create_task(init_graph(docs))
     logger.info("Index rebuild complete — %d chunks (cached=%s, graph_nodes=%d)",

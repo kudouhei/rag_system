@@ -4,7 +4,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.training.retrieval import TrainingRetrievalResult
-from app.training.schemas import TrainingExplanationRequest
+from app.training.schemas import (
+    TrainingEvidence,
+    TrainingExplanationRequest,
+)
 
 
 @dataclass(slots=True)
@@ -105,4 +108,94 @@ def select_training_evidence(
         doc_ids_by_option=doc_ids_by_option,
         option_ids_without_candidates=option_ids_without_candidates,
     )
-    
+
+@dataclass(slots=True)
+class MaterializedTrainingEvidence:
+    evidence: list[TrainingEvidence]
+    evidence_ids_by_option: dict[str, list[str]]
+
+
+def _required_doc_text(doc: dict, field: str) -> str:
+    value = str(doc.get(field, "")).strip()
+
+    if not value:
+        raise ValueError(
+            f"retrieved document is missing required field: {field}"
+        )
+
+    return value
+
+
+def _optional_doc_text(doc: dict, field: str) -> str | None:
+    value = doc.get(field)
+
+    if value is None:
+        return None
+
+    text = str(value).strip()
+    return text or None
+
+
+def materialize_training_evidence(
+    selection: TrainingEvidenceSelection,
+) -> MaterializedTrainingEvidence:
+    evidence: list[TrainingEvidence] = []
+    evidence_id_by_doc_id: dict[str, str] = {}
+
+    for doc in selection.docs:
+        doc_id = _required_doc_text(doc, "id")
+        source = _required_doc_text(doc, "source")
+        content = _required_doc_text(doc, "content")
+
+        evidence_id = f"E{len(evidence) + 1}"
+        evidence_id_by_doc_id[doc_id] = evidence_id
+
+        raw_score = float(
+            doc.get(
+                "training_score",
+                doc.get(
+                    "ce_score",
+                    doc.get("final_score", 0.0),
+                ),
+            )
+        )
+        relevance_score = min(1.0, max(0.0, raw_score))
+
+        evidence.append(
+            TrainingEvidence(
+                evidence_id=evidence_id,
+                chunk_id=doc_id,
+                source=source,
+                title=_optional_doc_text(doc, "title"),
+                section=_optional_doc_text(doc, "section"),
+                excerpt=content[:4000],
+                relevance_score=relevance_score,
+                regulation_number=_optional_doc_text(
+                    doc,
+                    "regulation_number",
+                ),
+                issuing_authority=_optional_doc_text(
+                    doc,
+                    "issuing_authority",
+                ),
+                effective_date=_optional_doc_text(
+                    doc,
+                    "effective_date",
+                ),
+            )
+        )
+
+    evidence_ids_by_option = {
+        option_id: [
+            evidence_id_by_doc_id[doc_id]
+            for doc_id in doc_ids
+            if doc_id in evidence_id_by_doc_id
+        ]
+        for option_id, doc_ids
+        in selection.doc_ids_by_option.items()
+    }
+
+    return MaterializedTrainingEvidence(
+        evidence=evidence,
+        evidence_ids_by_option=evidence_ids_by_option,
+    )
