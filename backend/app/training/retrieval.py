@@ -13,6 +13,7 @@ from app.retrieval.scoring import (
 from app.training.access import build_training_doc_mask
 from app.training.query_planner import build_retrieval_queries
 from app.training.schemas import TrainingExplanationRequest
+from app.core.provenance import compute_corpus_version
 
 
 @dataclass(slots=True)
@@ -20,21 +21,32 @@ class TrainingRetrievalResult:
     eligible_doc_count: int
     results_by_query: dict[str, list[dict]]
     merged_docs: list[dict]
+    eligible_corpus_version: str
 
 
 async def retrieve_training_candidates(
     request: TrainingExplanationRequest,
 ) -> TrainingRetrievalResult:
+    knowledge_base = state.KNOWLEDGE_BASE
+    
     query_plan = build_retrieval_queries(request)
     doc_mask = build_training_doc_mask(
         state.KNOWLEDGE_BASE,
         request,
     )
-    eligible_doc_count = sum(doc_mask)
+
+    eligible_docs = [
+        doc
+        for doc, allowed in zip(knowledge_base, doc_mask)
+        if allowed
+    ]
+    eligible_doc_count = len(eligible_docs)
+    eligible_corpus_version = compute_corpus_version(eligible_docs)
 
     if eligible_doc_count == 0:
         return TrainingRetrievalResult(
             eligible_doc_count=0,
+            eligible_corpus_version=eligible_corpus_version,
             results_by_query={
                 query.query_id: []
                 for query in query_plan
@@ -119,6 +131,7 @@ async def retrieve_training_candidates(
 
     return TrainingRetrievalResult(
         eligible_doc_count=eligible_doc_count,
+        eligible_corpus_version=eligible_corpus_version,
         results_by_query=results_by_query,
         merged_docs=merged_docs,
     )
