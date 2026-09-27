@@ -135,7 +135,10 @@ async def build_training_explanation(
         summary=summary,
         option_explanations=option_explanations,
         evidence=materialized.evidence,
-        grounding_score=_compute_evidence_relevance_score(materialized),
+        evidence_relevance_score=_compute_evidence_relevance_score(
+            materialized
+        ),
+        grounding_score=None,
         corpus_version=retrieval.eligible_corpus_version,
         generator_model=None,
         generated_at=datetime.now(timezone.utc),
