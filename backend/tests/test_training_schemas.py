@@ -72,7 +72,8 @@ class TrainingSchemaTests(unittest.TestCase):
                     "relevance_score": 0.94,
                 }
             ],
-            "grounding_score": 0.90,
+            "evidence_relevance_score": 0.90,
+            "grounding_score": None,        # Will be set by service layer
             "corpus_version": "test-v1",
             "generator_model": None,
             "generated_at": datetime.now(timezone.utc),

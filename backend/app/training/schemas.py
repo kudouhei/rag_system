@@ -109,7 +109,15 @@ class TrainingExplanationResponse(BaseModel):
     )
     evidence: list[TrainingEvidence] = Field(default_factory=list)
 
-    grounding_score: float = Field(ge=0.0, le=1.0)
+    evidence_relevance_score: float = Field(
+        ge=0.0,
+        le=1.0,
+    )
+    grounding_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+    )
     corpus_version: str = Field(min_length=1, max_length=100)
     generator_model: str | None = Field(default=None, max_length=200)
     generated_at: datetime

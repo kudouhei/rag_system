@@ -31,7 +31,7 @@ async def retrieve_training_candidates(
     
     query_plan = build_retrieval_queries(request)
     doc_mask = build_training_doc_mask(
-        state.KNOWLEDGE_BASE,
+        knowledge_base,
         request,
     )
 

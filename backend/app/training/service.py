@@ -17,7 +17,7 @@ from app.training.schemas import (
     TrainingOptionExplanation,
 )
 
-def _compute_grounding_score(
+def _compute_evidence_relevance_score(
     materialized: MaterializedTrainingEvidence,
 ) -> float:
     evidence_by_id = { item.evidence_id: item for item in materialized.evidence }
@@ -135,7 +135,7 @@ async def build_training_explanation(
         summary=summary,
         option_explanations=option_explanations,
         evidence=materialized.evidence,
-        grounding_score=_compute_grounding_score(materialized),
+        grounding_score=_compute_evidence_relevance_score(materialized),
         corpus_version=retrieval.eligible_corpus_version,
         generator_model=None,
         generated_at=datetime.now(timezone.utc),

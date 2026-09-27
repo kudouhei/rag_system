@@ -24,4 +24,4 @@ tokenize_fn                          = None
 llm_client                           = None
 KNOWLEDGE_GRAPH: dict                = {"nodes": {}, "edges": {}}
 
-corpus_version: str = "uninitialized"
+index_corpus_version: str = "uninitialized"

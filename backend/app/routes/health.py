@@ -40,7 +40,7 @@ def _readiness_checks() -> dict[str, bool]:
             state.bm25_index is not None
             and state.tokenize_fn is not None
         ),
-        "corpus_version": state.corpus_version != "uninitialized",
+        "corpus_version": state.index_corpus_version != "uninitialized",
     }
 
 
@@ -79,7 +79,7 @@ async def health():
         "graph_nodes":          len(state.KNOWLEDGE_GRAPH["nodes"]),
         "graph_edges":          len(state.KNOWLEDGE_GRAPH["edges"]),
         "embedding_cache_dir":  str(CACHE_DIR),
-        "corpus_version": state.corpus_version,
+        "index_corpus_version": state.index_corpus_version,
     }
 
 

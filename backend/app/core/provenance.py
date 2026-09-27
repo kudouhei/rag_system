@@ -51,4 +51,4 @@ def compute_corpus_version(docs: Sequence[dict]) -> str:
         digest.update(encoded_payload)
         digest.update(b"\n")
 
-    return f"sha256:{digest.hexdigest()[:16]}" 
+    return f"sha256:{digest.hexdigest()}"
