@@ -1,9 +1,9 @@
 import { useCallback, useState } from "react";
 
-// ── localStorage helpers ──────────────────────────────────────────────────────
-export const LS_KEY = "rag_ui_state";
+// ── localStorage helpers (internal — not used outside this module) ────────────
+const LS_KEY = "rag_ui_state";
 
-export const loadLS = () => {
+const loadLS = () => {
   try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; }
 };
 

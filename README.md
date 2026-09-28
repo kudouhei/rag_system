@@ -207,7 +207,6 @@ rag_system/
 ├── backend/main.py               # API + RAG / Agent / Compliance pipelines
 ├── backend/mcp_server.py
 ├── backend/docs/                 # Synthetic fund regulatory knowledge base (19 docs)
-├── backend/docs_legacy_it_kb/    # Previous IT/security sample docs (kept for reference)
 ├── backend/app/pipeline/compliance.py   # Compliance Check pipeline
 ├── backend/app/routes/compliance.py     # POST /compliance_check
 ├── frontend/src/App.jsx

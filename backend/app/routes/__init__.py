@@ -8,6 +8,7 @@ from . import feedback as feedback_routes
 from . import graph as graph_routes
 from . import health as health_routes
 from . import websocket as websocket_routes
+from . import training as training_routes
 
 router = APIRouter()
 router.include_router(websocket_routes.router)
@@ -16,3 +17,4 @@ router.include_router(documents_routes.router)
 router.include_router(feedback_routes.router)
 router.include_router(graph_routes.router)
 router.include_router(compliance_routes.router)
+router.include_router(training_routes.router)

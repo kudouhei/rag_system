@@ -21,17 +21,13 @@ import re
 import time
 from typing import List, Optional
 
-import numpy as np
-
 from app.core import state
 from app.core.messages import _t
 from app.core.schemas import ComplianceCheckRequest, ComplianceCheckResponse, ComplianceFinding
 from app.llm.client import llm_call
 from app.pipeline.utils import format_doc_context
-from app.retrieval.bm25_index import compute_bm25_scores
-from app.retrieval.embeddings import compute_embedding_scores
-from app.retrieval.fusion import fuse_scores
 from app.retrieval.reranker import rerank_docs
+from app.retrieval.scoring import build_scored_docs, compute_score_arrays
 
 logger = logging.getLogger(__name__)
 
@@ -59,34 +55,14 @@ async def run_compliance_check(req: ComplianceCheckRequest) -> ComplianceCheckRe
     t0 = time.time()
     lang = req.language or "en"
 
-    emb_scores = compute_embedding_scores(req.scenario)
-    bm25_arr   = compute_bm25_scores(req.scenario)
-    graph_arr  = np.zeros(len(state.KNOWLEDGE_BASE), dtype=np.float32)
-    final_arr  = fuse_scores(emb_scores, bm25_arr, graph_arr, "hybrid", False)
+    emb_scores, bm25_arr, graph_arr = await compute_score_arrays(req.scenario, enable_graph=False)
 
     mask = _apply_filters(state.KNOWLEDGE_BASE, req)
-    docs_scored = []
-    for idx, doc in enumerate(state.KNOWLEDGE_BASE):
-        if not mask[idx]:
-            continue
-        d = doc.copy()
-        d.update(
-            embedding_score=float(emb_scores[idx]),
-            bm25_score=float(bm25_arr[idx]),
-            final_score=float(final_arr[idx]),
-        )
-        docs_scored.append(d)
+    docs_scored = build_scored_docs(emb_scores, bm25_arr, graph_arr, "hybrid", False, doc_mask=mask)
 
     # If filters excluded everything, fall back to unfiltered retrieval.
     if not docs_scored:
-        for idx, doc in enumerate(state.KNOWLEDGE_BASE):
-            d = doc.copy()
-            d.update(
-                embedding_score=float(emb_scores[idx]),
-                bm25_score=float(bm25_arr[idx]),
-                final_score=float(final_arr[idx]),
-            )
-            docs_scored.append(d)
+        docs_scored = build_scored_docs(emb_scores, bm25_arr, graph_arr, "hybrid", False)
 
     results = sorted(docs_scored, key=lambda x: x["final_score"], reverse=True)[: max(req.top_k, 1)]
 

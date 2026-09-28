@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import time
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response, status
 
 from app.core import state
 from app.core.audit import AUDIT_FILE, FEEDBACK_FILE
@@ -18,6 +18,51 @@ from app.core.config import (
 )
 
 router = APIRouter()
+
+def _readiness_checks() -> dict[str, bool]:
+    """Return the readiness state of mandatory RAG components."""
+
+    real_documents_loaded = any(
+        doc.get("id") not in (None, "", "placeholder")
+        for doc in state.KNOWLEDGE_BASE
+    )
+
+    embeddings_aligned = (
+        state.doc_embeddings is not None
+        and len(state.doc_embeddings) == len(state.KNOWLEDGE_BASE)
+    )
+
+    return {
+        "documents": real_documents_loaded,
+        "embedding_model": state.embed_model is not None,
+        "embeddings": embeddings_aligned,
+        "bm25": (
+            state.bm25_index is not None
+            and state.tokenize_fn is not None
+        ),
+        "corpus_version": state.index_corpus_version != "uninitialized",
+    }
+
+
+@router.get("/health/live")
+async def health_live():
+    """The API process is alive and able to respond."""
+    return {"status": "alive"}
+
+
+@router.get("/health/ready")
+async def health_ready(response: Response):
+    """The mandatory RAG components are ready to serve traffic."""
+    checks = _readiness_checks()
+    is_ready = all(checks.values())
+
+    if not is_ready:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+
+    return {
+        "status": "ready" if is_ready else "not_ready",
+        "checks": checks,
+    }
 
 
 @router.get("/health")
@@ -34,6 +79,7 @@ async def health():
         "graph_nodes":          len(state.KNOWLEDGE_GRAPH["nodes"]),
         "graph_edges":          len(state.KNOWLEDGE_GRAPH["edges"]),
         "embedding_cache_dir":  str(CACHE_DIR),
+        "index_corpus_version": state.index_corpus_version,
     }
 
 

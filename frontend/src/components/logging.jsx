@@ -1,8 +1,8 @@
 import { C } from "../config/theme";
 import { tL } from "../i18n/index.jsx";
 
-// ── Phase Badge ───────────────────────────────────────────────────────────────
-export const PHASES = {
+// ── Phase Badge (PHASES is internal — not used outside this module) ───────────
+const PHASES = {
   retrieval:  { label:"RETRIEVAL",  color:C.accent  },
   reranking:  { label:"RERANKING",  color:C.purple  },
   generation: { label:"GENERATION", color:C.green   },

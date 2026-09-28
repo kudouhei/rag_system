@@ -64,9 +64,10 @@ htmlcov/
 .pytest_cache/
 .mypy_cache/
 
-# RAG system generated files
+# RAG system generated files (runtime logs/caches, not source)
 backend/cache/
 backend/feedback.jsonl
+backend/audit.jsonl
 
 # Misc
 *.bak

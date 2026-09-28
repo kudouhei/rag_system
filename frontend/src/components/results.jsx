@@ -88,47 +88,6 @@ export const RagasPanel = ({ metrics, lang }) => {
   );
 };
 
-// ── Recall Chart ──────────────────────────────────────────────────────────────
-export const RecallChart = ({ metrics, lang }) => {
-  if (!metrics) return null;
-  const stages = [
-    { lk:"r_base", value:metrics.baseline_recall,   color:C.textDim                },
-    { lk:"r_iter", value:metrics.iterative_recall,  color:C.accent,  delta:"+15%"  },
-    { lk:"r_fus",  value:metrics.fusion_recall,     color:C.green,   delta:"+3%"   },
-    { lk:"r_re",   value:metrics.rerank_recall,     color:C.purple,  delta:"+2%"   },
-  ];
-  const maxVal = Math.max(...stages.map(s=>s.value));
-  const chartH = 80;
-  return (
-    <div style={{background:C.surface, border:`1px solid ${C.borderBright}`, borderRadius:8, padding:16, marginTop:12}}>
-      <div style={{fontSize:11, color:C.textMid, fontWeight:700, letterSpacing:"0.08em", marginBottom:16}}>
-        {tL(lang,"recallTitle")}&nbsp;<span style={{fontSize:10,color:C.textDim}}>{tL(lang,"recallSub")}</span>
-      </div>
-      <div style={{display:"flex", alignItems:"flex-end", gap:12, height:chartH+36}}>
-        {stages.map((s,i)=>{
-          const barH=(s.value/maxVal)*chartH;
-          return (
-            <div key={i} style={{flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4}}>
-              <span style={{fontSize:11,color:s.color,fontWeight:700}}>{(s.value*100).toFixed(1)}%</span>
-              {s.delta ? <span style={{fontSize:10,color:C.green,fontWeight:600}}>{s.delta}</span>
-                       : <span style={{fontSize:10}}>&nbsp;</span>}
-              <div style={{
-                width:"100%", height:barH,
-                background:`linear-gradient(180deg,${s.color}cc,${s.color}44)`,
-                borderRadius:"4px 4px 0 0", border:`1px solid ${s.color}55`,
-                transition:"height 0.8s cubic-bezier(0.4,0,0.2,1)",
-              }}/>
-              <span style={{fontSize:10,color:C.textMid,textAlign:"center",lineHeight:1.3}}>
-                {tL(lang,s.lk)}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
 // ── Iteration Timeline ─────────────────────────────────────────────────────────
 export const IterationTimeline = ({ iterations }) => {
   if (!iterations?.length) return null;
