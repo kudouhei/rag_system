@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import re
 from datetime import datetime, timezone
@@ -99,6 +101,33 @@ def chunk_text(text: str, max_chars: int = MAX_CHUNK_CHARS) -> List[str]:
         chunks.append(current)
     return chunks or [text[:max_chars]]
 
+def make_stable_chunk_id(
+    *,
+    source_key: str,
+    language: str,
+    article: str,
+    chunk_index: int,
+    content: str,
+) -> str:
+    normalized_content = " ".join(content.split())
+
+    identity = {
+        "source_key": source_key,
+        "language": language,
+        "article": article,
+        "chunk_index": chunk_index,
+        "content": normalized_content,
+    }
+
+    payload = json.dumps(
+        identity,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+    return f"chunk:{hashlib.sha256(payload).hexdigest()}"
+
 
 def load_documents_from_folder(docs_dir: Path) -> List[dict]:
     if not docs_dir.exists():
@@ -140,25 +169,57 @@ def load_documents_from_folder(docs_dir: Path) -> List[dict]:
         if not text.strip():
             continue
 
+        relative_source = path.relative_to(docs_dir).as_posix()
+
+        source_key = str(
+            reg_meta.get("source_id") or relative_source
+        )
+        language = str(
+            reg_meta.get("language") or "und"
+        )
+        article = str(
+            reg_meta.get("article") or ""
+        )
+
         chunks = chunk_text(text)
         tags = [suffix.lstrip(".")]
+
         if path.parent != docs_dir:
             tags.append(path.parent.name)
+
         if reg_meta.get("document_type"):
             tags.append(str(reg_meta["document_type"]))
 
-        base_title = str(reg_meta.get("title") or path.stem)
+        base_title = str(
+            reg_meta.get("title") or path.stem
+        )
 
         stat = path.stat()
+
         for i, chunk in enumerate(chunks):
             doc_id += 1
-            title = base_title + (f" (§{i + 1})" if len(chunks) > 1 else "")
+
+            title = base_title + (
+                f" (§{i + 1})"
+                if len(chunks) > 1
+                else ""
+            )
+
+            stable_id = make_stable_chunk_id(
+                source_key=source_key,
+                language=language,
+                article=article,
+                chunk_index=i,
+                content=chunk,
+            )
+
             doc = {
-                "id":           f"doc_{doc_id:04d}",
-                "title":        title,
-                "content":      chunk,
-                "source":       str(path.relative_to(docs_dir)),
-                "tags":         tags,
+                "id": f"doc_{doc_id:04d}",
+                "stable_id": stable_id,
+                "title": title,
+                "content": chunk,
+                "source": relative_source,
+                "tags": tags,
                 "embedding_score": 0.0,
                 "bm25_score":   0.0,
                 # ── Enhanced metadata for knowledge base management ──
