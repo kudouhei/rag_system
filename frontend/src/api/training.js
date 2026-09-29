@@ -1,8 +1,14 @@
 import { API_BASE } from "../config/api";
 
 
+const TRAINING_API_BASE =
+  `${API_BASE}/api/v1/training`;
+
 const TRAINING_EXPLANATION_ENDPOINT =
-  `${API_BASE}/api/v1/training/explanations`;
+  `${TRAINING_API_BASE}/explanations`;
+
+const TRAINING_DEBUG_ENDPOINT =
+  `${TRAINING_API_BASE}/explanations/debug`;
 
 
 async function readResponseBody(response) {
@@ -22,12 +28,13 @@ async function readResponseBody(response) {
 }
 
 
-export async function createTrainingExplanation(
+async function postTrainingRequest(
+  endpoint,
   payload,
   { signal } = {},
 ) {
   const response = await fetch(
-    TRAINING_EXPLANATION_ENDPOINT,
+    endpoint,
     {
       method: "POST",
 
@@ -40,7 +47,9 @@ export async function createTrainingExplanation(
     },
   );
 
-  const responseBody = await readResponseBody(response);
+  const responseBody = await readResponseBody(
+    response
+  );
 
   if (!response.ok) {
     const detail = responseBody?.detail;
@@ -60,4 +69,28 @@ export async function createTrainingExplanation(
   }
 
   return responseBody;
+}
+
+
+export function createTrainingExplanation(
+  payload,
+  options,
+) {
+  return postTrainingRequest(
+    TRAINING_EXPLANATION_ENDPOINT,
+    payload,
+    options,
+  );
+}
+
+
+export function debugTrainingExplanation(
+  payload,
+  options,
+) {
+  return postTrainingRequest(
+    TRAINING_DEBUG_ENDPOINT,
+    payload,
+    options,
+  );
 }

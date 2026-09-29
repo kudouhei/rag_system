@@ -4,9 +4,19 @@ import {
   useState,
 } from "react";
 
-import { createTrainingExplanation } from "../../api/training";
+import { debugTrainingExplanation } from "../../api/training";
 import { C } from "../../config/theme";
 
+const STAGE_KEYS = [
+  "request",
+  "access_control",
+  "query_planning",
+  "retrieval",
+  "evidence_selection",
+  "generation",
+  "grounding",
+  "final_response",
+];
 
 const DEMO_REQUEST = {
   tenant_id: "bank-a",
@@ -169,13 +179,18 @@ function PipelineStepper({
   getStageState,
   selectedStage,
   onSelect,
+  traceDetailsLabel,
 }) {
   const [
     selectedTitle,
     selectedDescription,
   ] = stages[selectedStage];
 
-  const selectedState = getStageState(selectedStage);
+  const selectedState =
+    getStageState(selectedStage);
+
+  const selectedTrace =
+    selectedState.traceStage;
 
   return (
     <div>
@@ -189,8 +204,11 @@ function PipelineStepper({
         }}
       >
         {stages.map(([title], index) => {
-          const stageState = getStageState(index);
-          const selected = selectedStage === index;
+          const stageState =
+            getStageState(index);
+
+          const selected =
+            selectedStage === index;
 
           return (
             <button
@@ -239,7 +257,8 @@ function PipelineStepper({
                     alignItems: "center",
                     justifyContent: "center",
                     borderRadius: "50%",
-                    background: `${stageState.color}14`,
+                    background:
+                      `${stageState.color}14`,
                     color: stageState.color,
                     fontSize: 11,
                     fontWeight: 800,
@@ -295,11 +314,12 @@ function PipelineStepper({
           alignItems: "center",
           justifyContent: "space-between",
           gap: 12,
-          padding: "10px 12px",
-          marginBottom: 18,
+          padding: "11px 13px",
+          marginBottom: selectedTrace ? 8 : 18,
           background: C.bg,
           border: `1px solid ${C.border}`,
-          borderLeft: `3px solid ${selectedState.color}`,
+          borderLeft:
+            `3px solid ${selectedState.color}`,
           borderRadius: 8,
         }}
       >
@@ -318,18 +338,94 @@ function PipelineStepper({
             style={{
               color: C.textMid,
               fontSize: 12,
+              lineHeight: 1.4,
               marginTop: 3,
             }}
           >
             {selectedDescription}
           </div>
+
+          {selectedTrace && (
+            <div
+              style={{
+                color: C.text,
+                fontSize: 12,
+                lineHeight: 1.5,
+                marginTop: 7,
+              }}
+            >
+              {selectedTrace.summary}
+            </div>
+          )}
         </div>
 
-        <StageBadge
-          label={selectedState.label}
-          color={selectedState.color}
-        />
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexShrink: 0,
+          }}
+        >
+          {selectedTrace && (
+            <span
+              style={{
+                color: C.textMid,
+                fontSize: 11,
+                fontWeight: 700,
+              }}
+            >
+              {selectedTrace.duration_ms} ms
+            </span>
+          )}
+
+          <StageBadge
+            label={selectedState.label}
+            color={selectedState.color}
+          />
+        </div>
       </div>
+
+      {selectedTrace && (
+        <details
+          style={{
+            marginBottom: 18,
+            padding: "9px 12px",
+            background: C.bg,
+            border: `1px solid ${C.border}`,
+            borderRadius: 8,
+            color: C.textMid,
+            fontSize: 11,
+          }}
+        >
+          <summary
+            style={{
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            {traceDetailsLabel}
+          </summary>
+
+          <pre
+            style={{
+              margin: "10px 0 0",
+              padding: 10,
+              overflow: "auto",
+              background: C.surface,
+              borderRadius: 6,
+              fontSize: 10,
+              lineHeight: 1.5,
+            }}
+          >
+            {JSON.stringify(
+              selectedTrace.details,
+              null,
+              2,
+            )}
+          </pre>
+        </details>
+      )}
     </div>
   );
 }
@@ -340,6 +436,7 @@ export function TrainingLabTab({ lang }) {
 
   const [runState, setRunState] = useState("idle");
   const [result, setResult] = useState(null);
+  const [trace, setTrace] = useState([]);
   const [error, setError] = useState(null);
   const [selectedStage, setSelectedStage] = useState(0);
 
@@ -355,37 +452,41 @@ export function TrainingLabTab({ lang }) {
 
   const runDemo = async () => {
     controllerRef.current?.abort();
-
+  
     const controller = new AbortController();
     controllerRef.current = controller;
-
+  
     setRunState("running");
     setResult(null);
+    setTrace([]);
     setError(null);
-
+    setSelectedStage(0);
+  
     try {
-      const response = await createTrainingExplanation(
-        {
-          ...DEMO_REQUEST,
-          language: lang,
-        },
-        {
-          signal: controller.signal,
-        },
-      );
-
+      const debugResponse =
+        await debugTrainingExplanation(
+          {
+            ...DEMO_REQUEST,
+            language: lang,
+          },
+          {
+            signal: controller.signal,
+          },
+        );
+  
       if (controllerRef.current !== controller) {
         return;
       }
-
-      setResult(response);
+  
+      setResult(debugResponse.result);
+      setTrace(debugResponse.trace);
       setRunState("complete");
       setSelectedStage(7);
     } catch (requestError) {
       if (requestError.name === "AbortError") {
         return;
       }
-
+  
       setError(requestError);
       setRunState("failed");
       setSelectedStage(7);
@@ -396,67 +497,80 @@ export function TrainingLabTab({ lang }) {
     }
   };
 
-
   const getStageState = (index) => {
+    const stageKey = STAGE_KEYS[index];
+  
+    const traceStage = trace.find(
+      (item) => item.stage === stageKey,
+    );
+  
     if (runState === "idle") {
       return {
         label: copy.waiting,
         color: C.textDim,
+        traceStage: null,
       };
     }
-
+  
     if (runState === "running") {
-      if (index === 0) {
-        return {
-          label: copy.complete,
-          color: C.green,
-        };
-      }
-
       return {
         label: copy.processing,
         color: C.orange,
+        traceStage: null,
       };
     }
-
+  
     if (runState === "failed") {
-      if (index === 7) {
-        return {
-          label: copy.failed,
-          color: C.red,
-        };
-      }
-
+      return {
+        label:
+          index === 7
+            ? copy.failed
+            : copy.notEvaluated,
+        color:
+          index === 7
+            ? C.red
+            : C.textDim,
+        traceStage: null,
+      };
+    }
+  
+    if (!traceStage) {
       return {
         label: copy.notEvaluated,
         color: C.textDim,
+        traceStage: null,
       };
     }
-
-    if (index <= 4 || index === 7) {
-      return {
+  
+    const presentationByStatus = {
+      complete: {
         label: copy.complete,
         color: C.green,
-      };
-    }
-
-    if (index === 5 && !result?.generator_model) {
-      return {
+      },
+      skipped: {
         label: copy.skipped,
         color: C.orange,
-      };
-    }
-
-    if (index === 6 && result?.grounding_score == null) {
-      return {
+      },
+      not_evaluated: {
         label: copy.notEvaluated,
         color: C.orange,
+      },
+      failed: {
+        label: copy.failed,
+        color: C.red,
+      },
+    };
+  
+    const presentation =
+      presentationByStatus[traceStage.status]
+      ?? {
+        label: traceStage.status,
+        color: C.textDim,
       };
-    }
-
+  
     return {
-      label: copy.complete,
-      color: C.green,
+      ...presentation,
+      traceStage,
     };
   };
 
@@ -563,6 +677,11 @@ export function TrainingLabTab({ lang }) {
         getStageState={getStageState}
         selectedStage={selectedStage}
         onSelect={setSelectedStage}
+        traceDetailsLabel={
+          lang === "zh"
+            ? "追踪详情"
+            : "Trace details"
+        }
       />
 
       {result && (

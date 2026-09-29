@@ -23,3 +23,5 @@ CONTEXTUAL_CHUNKING  = os.getenv("CONTEXTUAL_CHUNKING", "false").lower() == "tru
 CACHE_DIR            = Path(os.getenv("CACHE_DIR", _BACKEND_DIR / "cache"))
 # ⑩ Knowledge Graph (GraphRAG)
 ENABLE_GRAPH         = os.getenv("ENABLE_GRAPH", "true").lower() == "true"
+
+TRAINING_DEBUG_ENABLED = os.getenv("TRAINING_DEBUG_ENABLED", "false").lower() == "true"
