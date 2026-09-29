@@ -28,6 +28,14 @@ def init_llm_client() -> None:
     state.llm_client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
     logger.info("LLM client ready (model=%s)", DEEPSEEK_MODEL)
 
+def get_active_llm_model() -> str | None:
+    """Return the configured model when an LLM client is active."""
+
+    if state.llm_client is None:
+        return None
+
+    return DEEPSEEK_MODEL
+
 
 async def llm_call(messages: list, max_tokens: int = 100, temperature: float = 0.3) -> str:
     """Non-streaming LLM helper with graceful fallback."""
