@@ -25,7 +25,7 @@ topics:
   - storage_limitation
   - integrity_confidentiality
   - accountability
-approved_for_training: false
+approved_for_training: true
 ---
 
 # Article 5 — Principles relating to processing of personal data

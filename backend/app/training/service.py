@@ -82,18 +82,6 @@ async def build_training_explanation(
 
     option_explanations: list[TrainingOptionExplanation] = []
 
-    used_evidence_ids = {
-        evidence_id
-        for explanation in option_explanations
-        for evidence_id in explanation.evidence_ids
-    }
-
-    response_evidence = [
-        evidence
-        for evidence in materialized.evidence
-        if evidence.evidence_id in used_evidence_ids
-    ]
-
     for option in request.options:
         evidence_ids = materialized.evidence_ids_by_option.get(
             option.option_id,
@@ -116,6 +104,19 @@ async def build_training_explanation(
                 evidence_ids=evidence_ids,
             )
         )
+
+    # 必须在 option_explanations 构建完成后执行
+    used_evidence_ids = {
+        evidence_id
+        for explanation in option_explanations
+        for evidence_id in explanation.evidence_ids
+    }
+
+    response_evidence = [
+        evidence
+        for evidence in materialized.evidence
+        if evidence.evidence_id in used_evidence_ids
+    ]
 
     has_missing_option_evidence = any(
         not explanation.evidence_ids

@@ -135,6 +135,19 @@ def _optional_doc_text(doc: dict, field: str) -> str | None:
     text = str(value).strip()
     return text or None
 
+def _build_section_label(doc: dict) -> str | None:
+    explicit_section = _optional_doc_text(doc, "section")
+
+    if explicit_section:
+        return explicit_section
+
+    article = _optional_doc_text(doc, "article")
+
+    if article:
+        return f"Article {article}"
+
+    return None
+
 
 def materialize_training_evidence(
     selection: TrainingEvidenceSelection,
@@ -144,6 +157,10 @@ def materialize_training_evidence(
 
     for doc in selection.docs:
         doc_id = _required_doc_text(doc, "id")
+
+        stable_chunk_id = str(
+            doc.get("stable_id") or doc_id
+        ).strip()
         source = _required_doc_text(doc, "source")
         content = _required_doc_text(doc, "content")
 
@@ -164,10 +181,10 @@ def materialize_training_evidence(
         evidence.append(
             TrainingEvidence(
                 evidence_id=evidence_id,
-                chunk_id=doc_id,
+                chunk_id=stable_chunk_id,
                 source=source,
                 title=_optional_doc_text(doc, "title"),
-                section=_optional_doc_text(doc, "section"),
+                section=_build_section_label(doc),
                 excerpt=content[:4000],
                 relevance_score=relevance_score,
                 regulation_number=_optional_doc_text(
