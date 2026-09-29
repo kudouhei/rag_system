@@ -164,6 +164,176 @@ function Metric({ label, value }) {
   );
 }
 
+function PipelineStepper({
+  stages,
+  getStageState,
+  selectedStage,
+  onSelect,
+}) {
+  const [
+    selectedTitle,
+    selectedDescription,
+  ] = stages[selectedStage];
+
+  const selectedState = getStageState(selectedStage);
+
+  return (
+    <div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "stretch",
+          gap: 8,
+          overflowX: "auto",
+          padding: "2px 0 10px",
+        }}
+      >
+        {stages.map(([title], index) => {
+          const stageState = getStageState(index);
+          const selected = selectedStage === index;
+
+          return (
+            <button
+              key={title}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => {
+                onSelect(index);
+              }}
+              style={{
+                flex: "1 0 145px",
+                minWidth: 145,
+                minHeight: 74,
+                padding: "11px 12px",
+                textAlign: "left",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                borderRadius: 9,
+                border: `1px solid ${
+                  selected
+                    ? C.purple
+                    : C.border
+                }`,
+                background: selected
+                  ? `${C.purple}0D`
+                  : C.bg,
+                boxShadow: selected
+                  ? `0 0 0 1px ${C.purple}18`
+                  : "none",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 7,
+                  marginBottom: 7,
+                }}
+              >
+                <span
+                  style={{
+                    width: 26,
+                    height: 26,
+                    flexShrink: 0,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: "50%",
+                    background: `${stageState.color}14`,
+                    color: stageState.color,
+                    fontSize: 11,
+                    fontWeight: 800,
+                  }}
+                >
+                  {index + 1}
+                </span>
+
+                <span
+                  style={{
+                    color: selected
+                      ? C.purple
+                      : C.text,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    lineHeight: 1.3,
+                  }}
+                >
+                  {title}
+                </span>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  color: stageState.color,
+                  fontSize: 10,
+                  fontWeight: 700,
+                }}
+              >
+                <span
+                  style={{
+                    width: 6,
+                    height: 6,
+                    flexShrink: 0,
+                    borderRadius: "50%",
+                    background: stageState.color,
+                  }}
+                />
+
+                {stageState.label}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          padding: "10px 12px",
+          marginBottom: 18,
+          background: C.bg,
+          border: `1px solid ${C.border}`,
+          borderLeft: `3px solid ${selectedState.color}`,
+          borderRadius: 8,
+        }}
+      >
+        <div>
+          <div
+            style={{
+              color: C.text,
+              fontSize: 13,
+              fontWeight: 800,
+            }}
+          >
+            {selectedStage + 1}. {selectedTitle}
+          </div>
+
+          <div
+            style={{
+              color: C.textMid,
+              fontSize: 12,
+              marginTop: 3,
+            }}
+          >
+            {selectedDescription}
+          </div>
+        </div>
+
+        <StageBadge
+          label={selectedState.label}
+          color={selectedState.color}
+        />
+      </div>
+    </div>
+  );
+}
+
 
 export function TrainingLabTab({ lang }) {
   const copy = COPY[lang] ?? COPY.en;
@@ -171,6 +341,7 @@ export function TrainingLabTab({ lang }) {
   const [runState, setRunState] = useState("idle");
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [selectedStage, setSelectedStage] = useState(0);
 
   const controllerRef = useRef(null);
 
@@ -209,6 +380,7 @@ export function TrainingLabTab({ lang }) {
 
       setResult(response);
       setRunState("complete");
+      setSelectedStage(7);
     } catch (requestError) {
       if (requestError.name === "AbortError") {
         return;
@@ -216,6 +388,7 @@ export function TrainingLabTab({ lang }) {
 
       setError(requestError);
       setRunState("failed");
+      setSelectedStage(7);
     } finally {
       if (controllerRef.current === controller) {
         controllerRef.current = null;
@@ -385,77 +558,12 @@ export function TrainingLabTab({ lang }) {
         </div>
       )}
 
-      <div
-        style={{
-          display: "grid",
-          gap: 10,
-        }}
-      >
-        {copy.stages.map(([title, description], index) => {
-          const stageState = getStageState(index);
-
-          return (
-            <div
-              key={title}
-              style={{
-                display: "grid",
-                gridTemplateColumns:
-                  "36px minmax(0, 1fr) auto",
-                alignItems: "center",
-                gap: 12,
-                padding: 14,
-                background: C.bg,
-                border: `1px solid ${C.border}`,
-                borderRadius: 10,
-              }}
-            >
-              <div
-                style={{
-                  width: 30,
-                  height: 30,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: "50%",
-                  background: `${stageState.color}14`,
-                  color: stageState.color,
-                  fontSize: 12,
-                  fontWeight: 800,
-                }}
-              >
-                {index + 1}
-              </div>
-
-              <div>
-                <div
-                  style={{
-                    color: C.text,
-                    fontSize: 13,
-                    fontWeight: 700,
-                  }}
-                >
-                  {title}
-                </div>
-
-                <div
-                  style={{
-                    color: C.textMid,
-                    fontSize: 12,
-                    marginTop: 3,
-                  }}
-                >
-                  {description}
-                </div>
-              </div>
-
-              <StageBadge
-                label={stageState.label}
-                color={stageState.color}
-              />
-            </div>
-          );
-        })}
-      </div>
+      <PipelineStepper
+        stages={copy.stages}
+        getStageState={getStageState}
+        selectedStage={selectedStage}
+        onSelect={setSelectedStage}
+      />
 
       {result && (
         <div
