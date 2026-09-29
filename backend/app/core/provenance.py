@@ -21,6 +21,7 @@ _CORPUS_VERSION_FIELDS = (
     "access_scope",
     "tenant_id",
     "course_ids",
+    "knowledge_domain",
 )
 
 def compute_corpus_version(docs: Sequence[dict]) -> str:

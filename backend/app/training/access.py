@@ -54,6 +54,16 @@ def build_training_doc_mask(
             or request.course_id in allowed_course_ids
         )
 
-        mask.append(tenant_allowed and course_allowed)
+        knowledge_domain = str(
+            doc.get("knowledge_domain", "")
+        ).strip().lower()
+
+        domain_allowed = knowledge_domain == "gdpr"
+
+        mask.append(
+            domain_allowed
+            and tenant_allowed
+            and course_allowed
+        )
 
     return mask

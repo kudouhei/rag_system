@@ -39,6 +39,7 @@ _REG_METADATA_FIELDS = (
     "product_type", "risk_level", "effective_date", "status", "version",
     "amends", "related_regulation",
     "access_scope", "tenant_id", "course_ids",
+    "knowledge_domain",
 )
 
 
