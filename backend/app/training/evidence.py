@@ -21,7 +21,7 @@ def select_training_evidence(
     request: TrainingExplanationRequest,
     retrieval: TrainingRetrievalResult,
     max_evidence: int = 8,
-    per_option_limit: int = 2,
+    per_option_limit: int = 1,
 ) -> TrainingEvidenceSelection:
     if max_evidence < 1:
         raise ValueError("max_evidence must be at least 1")
