@@ -60,8 +60,13 @@ def build_training_doc_mask(
 
         domain_allowed = knowledge_domain == "gdpr"
 
+        approved_for_training = (
+            doc.get("approved_for_training") is True
+        )
+
         mask.append(
             domain_allowed
+            and approved_for_training
             and tenant_allowed
             and course_allowed
         )
