@@ -1,0 +1,132 @@
+schema_version: 1
+
+authority_tiers:
+  1: binding_law
+  2: supervisory_guidance
+  3: sector_regulatory_overlay
+  4: tenant_training_material
+
+sources:
+  - source_id: eu-gdpr-2016-679
+    title: Regulation (EU) 2016/679 - General Data Protection Regulation
+    authority: European Union
+    authority_tier: 1
+    source_type: regulation
+    jurisdiction: EU
+    languages:
+      - en
+      - fr
+    official_url: https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32016R0679
+    effective_date: "2018-05-25"
+    status: active
+    knowledge_domain: gdpr
+    access_scope: shared
+    topics:
+      - principles
+      - lawful_basis
+      - data_subject_rights
+      - controller_processor
+      - security
+      - data_breach
+      - dpia
+      - international_transfers
+    last_verified_at: "2026-09-29"
+    ingestion_status: planned
+    approved_for_training: false
+    content_sha256: null
+
+  - source_id: lu-law-2018-08-01-gdpr
+    title: Loi du 1er août 2018 portant organisation de la CNPD et mise en oeuvre du règlement UE 2016/679
+    authority: Grand Duchy of Luxembourg
+    authority_tier: 1
+    source_type: national_law
+    jurisdiction: LU
+    languages:
+      - fr
+    official_url: https://legilux.public.lu/eli/etat/leg/loi/2018/08/01/a686/jo
+    effective_date: "2018-08-01"
+    status: active
+    knowledge_domain: gdpr
+    access_scope: shared
+    topics:
+      - cnpd
+      - national_implementation
+      - employee_monitoring
+      - enforcement
+    last_verified_at: "2026-09-29"
+    ingestion_status: planned
+    approved_for_training: false
+    content_sha256: null
+
+  - source_id: cnpd-main-principles-en
+    title: Main principles
+    authority: Luxembourg National Commission for Data Protection
+    authority_tier: 2
+    source_type: supervisory_guidance
+    jurisdiction: LU
+    languages:
+      - en
+    official_url: https://cnpd.public.lu/en/professionnels/obligations/grands-principes.html
+    status: active
+    knowledge_domain: gdpr
+    access_scope: shared
+    topics:
+      - lawfulness
+      - fairness
+      - transparency
+      - purpose_limitation
+      - data_minimisation
+      - accuracy
+      - storage_limitation
+      - integrity_confidentiality
+      - accountability
+    last_verified_at: "2026-09-29"
+    ingestion_status: planned
+    approved_for_training: false
+    content_sha256: null
+
+  - source_id: cnpd-data-breaches-en
+    title: Data breaches
+    authority: Luxembourg National Commission for Data Protection
+    authority_tier: 2
+    source_type: supervisory_guidance
+    jurisdiction: LU
+    languages:
+      - en
+    official_url: https://cnpd.public.lu/en/professionnels/obligations/violation-de-donnees.html
+    status: active
+    knowledge_domain: gdpr
+    access_scope: shared
+    topics:
+      - security
+      - breach_notification
+      - seventy_two_hours
+      - data_subject_notification
+    last_verified_at: "2026-09-29"
+    ingestion_status: planned
+    approved_for_training: false
+    content_sha256: null
+
+  - source_id: cssf-circular-22-806
+    title: Circular CSSF 22/806 on outsourcing arrangements
+    authority: Commission de Surveillance du Secteur Financier
+    authority_tier: 3
+    source_type: sector_regulatory_overlay
+    jurisdiction: LU
+    languages:
+      - en
+    official_url: https://www.cssf.lu/en/Document/circular-cssf-22-806/
+    status: active_as_amended
+    version_label: amended_by_25_883_and_26_915
+    knowledge_domain: gdpr
+    access_scope: shared
+    topics:
+      - outsourcing
+      - cloud
+      - ict
+      - data_security
+      - third_party_risk
+    last_verified_at: "2026-09-29"
+    ingestion_status: planned
+    approved_for_training: false
+    content_sha256: null
