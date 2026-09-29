@@ -15,6 +15,12 @@ from app.training.query_planner import build_retrieval_queries
 from app.training.schemas import TrainingExplanationRequest
 from app.core.provenance import compute_corpus_version
 
+from time import perf_counter
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.training.trace import TrainingTraceCollector
+
 
 @dataclass(slots=True)
 class TrainingRetrievalResult:
@@ -26,10 +32,34 @@ class TrainingRetrievalResult:
 
 async def retrieve_training_candidates(
     request: TrainingExplanationRequest,
+    trace: TrainingTraceCollector | None = None,
 ) -> TrainingRetrievalResult:
     knowledge_base = state.KNOWLEDGE_BASE
-    
+
+    query_started_at = perf_counter()
     query_plan = build_retrieval_queries(request)
+
+    if trace is not None:
+        trace.record(
+            stage="query_planning",
+            status="complete",
+            started_at=query_started_at,
+            summary=(
+                f"Built {len(query_plan)} retrieval queries."
+            ),
+            details={
+                "queries": [
+                    {
+                        "query_id": query.query_id,
+                        "option_id": query.option_id,
+                        "text": query.text,
+                    }
+                    for query in query_plan
+                ],
+            },
+        )
+
+    access_started_at = perf_counter()    
     doc_mask = build_training_doc_mask(
         knowledge_base,
         request,
@@ -43,7 +73,105 @@ async def retrieve_training_candidates(
     eligible_doc_count = len(eligible_docs)
     eligible_corpus_version = compute_corpus_version(eligible_docs)
 
+    if trace is not None:
+        trace.record(
+            stage="access_control",
+            status="complete",
+            started_at=access_started_at,
+            summary=(
+                f"{eligible_doc_count} of "
+                f"{len(knowledge_base)} chunks are eligible."
+            ),
+            details={
+                "total_chunk_count": len(knowledge_base),
+                "eligible_chunk_count": eligible_doc_count,
+                "excluded_chunk_count": (
+                    len(knowledge_base)
+                    - eligible_doc_count
+                ),
+                "tenant_id": request.tenant_id,
+                "course_id": request.course_id,
+                "knowledge_domain": "gdpr",
+                "eligible_corpus_version": (
+                    eligible_corpus_version
+                ),
+            },
+        )
+
+    retrieval_started_at = perf_counter()
+
     if eligible_doc_count == 0:
+        if trace is not None:
+            trace.record(
+                stage="retrieval",
+                status="complete",
+                started_at=retrieval_started_at,
+                summary="No eligible chunks were available for retrieval.",
+                details={
+                    "top_k": request.top_k,
+                    "results_by_query": {},
+                },
+            )
+
+        if trace is not None:
+            trace.record(
+                stage="retrieval",
+                status="complete",
+                started_at=retrieval_started_at,
+                summary=(
+                    f"Retrieved {len(merged_docs)} unique candidates "
+                    f"across {len(results_by_query)} queries."
+                ),
+                details={
+                    "top_k": request.top_k,
+                    "unique_candidate_count": len(merged_docs),
+                    "results_by_query": {
+                        query_id: [
+                            {
+                                "chunk_id": (
+                                    doc.get("stable_id")
+                                    or doc.get("id")
+                                ),
+                                "source": doc.get("source"),
+                                "title": doc.get("title"),
+                                "embedding_score": round(
+                                    float(
+                                        doc.get(
+                                            "embedding_score",
+                                            0.0,
+                                        )
+                                    ),
+                                    4,
+                                ),
+                                "bm25_score": round(
+                                    float(
+                                        doc.get(
+                                            "bm25_score",
+                                            0.0,
+                                        )
+                                    ),
+                                    4,
+                                ),
+                                "final_score": round(
+                                    float(
+                                        doc.get(
+                                            "ce_score",
+                                            doc.get(
+                                                "final_score",
+                                                0.0,
+                                            ),
+                                        )
+                                    ),
+                                    4,
+                                ),
+                            }
+                            for doc in documents[:5]
+                        ]
+                        for query_id, documents
+                        in results_by_query.items()
+                    },
+                },
+            )
         return TrainingRetrievalResult(
             eligible_doc_count=0,
             eligible_corpus_version=eligible_corpus_version,
