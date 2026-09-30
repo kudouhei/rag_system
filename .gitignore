@@ -31,6 +31,10 @@ venv/
 ENV/
 .env
 .env.*
+
+# Configuration templates contain placeholders only and should be versioned.
+!.env.example
+!**/.env.example
 *.egg-info/
 dist/
 build/
