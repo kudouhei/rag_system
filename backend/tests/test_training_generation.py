@@ -4,11 +4,17 @@ from __future__ import annotations
 import json
 import unittest
 
+from unittest.mock import (
+    AsyncMock,
+    patch,
+)
+
 from app.training.evidence import (
     MaterializedTrainingEvidence,
 )
 from app.training.generation import (
     InvalidGeneratedTrainingContent,
+    generate_training_content,
     parse_generated_training_content,
 )
 from app.training.schemas import (
@@ -19,7 +25,7 @@ from app.training.schemas import (
 
 
 class TrainingGenerationContractTests(
-    unittest.TestCase
+    unittest.IsolatedAsyncioTestCase
 ):
     def setUp(self) -> None:
         self.request = TrainingExplanationRequest(
@@ -215,6 +221,83 @@ class TrainingGenerationContractTests(
                 self.materialized,
             )
 
+    @patch(
+        "app.training.generation.get_active_llm_model",
+        return_value="mock-training-model",
+    )
+    @patch(
+        "app.training.generation.llm_call",
+        new_callable=AsyncMock,
+    )
+    async def test_generates_when_llm_output_is_valid(
+        self,
+        mock_llm_call,
+        mock_get_active_llm_model,
+    ) -> None:
+        mock_llm_call.return_value = json.dumps(
+            {
+                "summary": (
+                    "The learner selected an incorrect answer."
+                ),
+                "option_explanations": [
+                    {
+                        "option_id": "A",
+                        "explanation": (
+                            "Option A expresses the data "
+                            "minimisation principle."
+                        ),
+                        "evidence_ids": ["E1"],
+                    },
+                    {
+                        "option_id": "B",
+                        "explanation": (
+                            "Option B permits unnecessary "
+                            "collection and is incorrect."
+                        ),
+                        "evidence_ids": ["E1"],
+                    },
+                    {
+                        "option_id": "C",
+                        "explanation": (
+                            "Option C concerns retention time, "
+                            "not collection necessity."
+                        ),
+                        "evidence_ids": ["E1"],
+                    },
+                ],
+            }
+        )
+
+        attempt = await generate_training_content(
+            request=self.request,
+            materialized=self.materialized,
+            learner_result="incorrect",
+        )
+
+        self.assertEqual(
+            attempt.status,
+            "generated",
+        )
+
+        self.assertEqual(
+            attempt.model,
+            "mock-training-model",
+        )
+
+        self.assertIsNotNone(
+            attempt.content
+        )
+
+        self.assertEqual(
+            attempt.content.summary,
+            (
+                "The learner selected an incorrect answer."
+            ),
+        )
+
+        mock_get_active_llm_model.assert_called_once_with()
+
+        mock_llm_call.assert_awaited_once()
 
 if __name__ == "__main__":
     unittest.main()

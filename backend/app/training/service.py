@@ -6,11 +6,16 @@ from time import perf_counter
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from app.training.domain import determine_learner_result
+from app.training.domain import (
+    determine_learner_result,
+)
 from app.training.evidence import (
     MaterializedTrainingEvidence,
     materialize_training_evidence,
     select_training_evidence,
+)
+from app.training.generation import (
+    generate_training_content,
 )
 from app.training.retrieval import (
     retrieve_training_candidates,
@@ -23,7 +28,9 @@ from app.training.schemas import (
 
 
 if TYPE_CHECKING:
-    from app.training.trace import TrainingTraceCollector
+    from app.training.trace import (
+        TrainingTraceCollector,
+    )
 
 
 def _compute_evidence_relevance_score(
@@ -100,9 +107,6 @@ async def build_training_explanation(
 ) -> TrainingExplanationResponse:
     # ------------------------------------------------------------------
     # Stage 1: Request
-    #
-    # FastAPI/Pydantic has already validated the request contract before
-    # the service is called.
     # ------------------------------------------------------------------
 
     request_started_at = perf_counter()
@@ -120,7 +124,9 @@ async def build_training_explanation(
                 "tenant_id": request.tenant_id,
                 "course_id": request.course_id,
                 "question_id": request.question_id,
-                "option_count": len(request.options),
+                "option_count": len(
+                    request.options
+                ),
                 "option_ids": [
                     option.option_id
                     for option in request.options
@@ -131,7 +137,9 @@ async def build_training_explanation(
                 "selected_option_ids": (
                     request.selected_option_ids
                 ),
-                "jurisdiction": request.jurisdiction,
+                "jurisdiction": (
+                    request.jurisdiction
+                ),
                 "language": request.language,
                 "top_k": request.top_k,
             },
@@ -140,9 +148,6 @@ async def build_training_explanation(
     # ------------------------------------------------------------------
     # Stages 2–4:
     # Access Control → Query Planning → Retrieval
-    #
-    # These stages are executed and traced inside retrieval.py because
-    # that module owns their real intermediate data.
     # ------------------------------------------------------------------
 
     retrieval = await retrieve_training_candidates(
@@ -152,9 +157,6 @@ async def build_training_explanation(
 
     # ------------------------------------------------------------------
     # Stage 5: Evidence Selection
-    #
-    # Convert the retrieval candidate pool into bounded, option-linked
-    # evidence suitable for the explanation response.
     # ------------------------------------------------------------------
 
     evidence_started_at = perf_counter()
@@ -177,6 +179,64 @@ async def build_training_explanation(
         ),
     )
 
+    if trace is not None:
+        trace.record(
+            stage="evidence_selection",
+            status="complete",
+            started_at=evidence_started_at,
+            summary=(
+                f"Linked evidence to "
+                f"{len(request.options)} answer options."
+            ),
+            details={
+                "retrieved_candidate_count": (
+                    len(retrieval.merged_docs)
+                ),
+                "selected_context_count": (
+                    len(selection.docs)
+                ),
+                "materialized_evidence_count": (
+                    len(materialized.evidence)
+                ),
+                "evidence_ids_by_option": (
+                    materialized.evidence_ids_by_option
+                ),
+                "options_without_candidates": (
+                    selection.option_ids_without_candidates
+                ),
+            },
+        )
+
+    # ------------------------------------------------------------------
+    # Stage 6: Controlled Generation
+    #
+    # The generator may write narrative text and select allowed evidence
+    # IDs. It may not decide correctness or learner result.
+    # ------------------------------------------------------------------
+
+    generation_started_at = perf_counter()
+
+    generation_attempt = (
+        await generate_training_content(
+            request=request,
+            materialized=materialized,
+            learner_result=learner_result,
+        )
+    )
+
+    generated_content = (
+        generation_attempt.content
+    )
+
+    generated_by_option_id = {
+        option.option_id: option
+        for option in (
+            generated_content.option_explanations
+            if generated_content is not None
+            else []
+        )
+    }
+
     correct_ids = set(
         request.correct_option_ids
     )
@@ -190,17 +250,40 @@ async def build_training_explanation(
     ] = []
 
     for option in request.options:
-        evidence_ids = (
-            materialized.evidence_ids_by_option.get(
-                option.option_id,
-                [],
-            )
-        )
-
         is_correct = (
             option.option_id
             in correct_ids
         )
+
+        generated_option = (
+            generated_by_option_id.get(
+                option.option_id
+            )
+        )
+
+        if generated_option is not None:
+            explanation_text = (
+                generated_option.explanation
+            )
+
+            evidence_ids = (
+                generated_option.evidence_ids
+            )
+        else:
+            evidence_ids = (
+                materialized.evidence_ids_by_option.get(
+                    option.option_id,
+                    [],
+                )
+            )
+
+            explanation_text = (
+                _build_fallback_explanation(
+                    option_id=option.option_id,
+                    is_correct=is_correct,
+                    evidence_ids=evidence_ids,
+                )
+            )
 
         option_explanations.append(
             TrainingOptionExplanation(
@@ -210,13 +293,7 @@ async def build_training_explanation(
                     option.option_id
                     in selected_ids
                 ),
-                explanation=(
-                    _build_fallback_explanation(
-                        option_id=option.option_id,
-                        is_correct=is_correct,
-                        evidence_ids=evidence_ids,
-                    )
-                ),
+                explanation=explanation_text,
                 evidence_ids=evidence_ids,
             )
         )
@@ -234,86 +311,52 @@ async def build_training_explanation(
         in used_evidence_ids
     ]
 
+    if generation_attempt.status == "generated":
+        generation_trace_status = "complete"
+    elif generation_attempt.status in {
+        "disabled",
+        "insufficient_evidence",
+    }:
+        generation_trace_status = "skipped"
+    else:
+        generation_trace_status = "failed"
+
     if trace is not None:
         trace.record(
-            stage="evidence_selection",
-            status="complete",
-            started_at=evidence_started_at,
-            summary=(
-                f"Published {len(response_evidence)} "
-                "option-linked evidence items."
-            ),
+            stage="generation",
+            status=generation_trace_status,
+            started_at=generation_started_at,
+            summary=generation_attempt.reason,
             details={
-                "retrieved_candidate_count": (
-                    len(retrieval.merged_docs)
+                "generation_status": (
+                    generation_attempt.status
                 ),
-                "selected_context_count": (
-                    len(selection.docs)
+                "generator_model": (
+                    generation_attempt.model
+                ),
+                "fallback_used": (
+                    generated_content is None
                 ),
                 "published_evidence_count": (
                     len(response_evidence)
                 ),
-                "dropped_unreferenced_count": (
-                    len(materialized.evidence)
-                    - len(response_evidence)
-                ),
-                "evidence_ids_by_option": (
-                    materialized.evidence_ids_by_option
-                ),
-                "options_without_candidates": (
-                    selection.option_ids_without_candidates
-                ),
-                "published_evidence": [
-                    {
-                        "evidence_id": (
-                            evidence.evidence_id
-                        ),
-                        "chunk_id": (
-                            evidence.chunk_id
-                        ),
-                        "source": evidence.source,
-                        "section": evidence.section,
-                        "relevance_score": (
-                            evidence.relevance_score
-                        ),
-                    }
+                "published_evidence_ids": [
+                    evidence.evidence_id
                     for evidence in response_evidence
                 ],
             },
         )
 
     # ------------------------------------------------------------------
-    # Stage 6: Generation
-    #
-    # The deterministic fallback above remains active until the controlled
-    # LLM generator is connected and validated.
-    # ------------------------------------------------------------------
-
-    generation_started_at = perf_counter()
-
-    if trace is not None:
-        trace.record(
-            stage="generation",
-            status="skipped",
-            started_at=generation_started_at,
-            summary=(
-                "Automated explanation generation "
-                "is not enabled."
-            ),
-            details={
-                "generator_model": None,
-                "fallback_used": True,
-            },
-        )
-
-    # ------------------------------------------------------------------
     # Stage 7: Grounding
     #
-    # A retrieval relevance score is available, but claim-level grounding
-    # has not yet been implemented.
+    # Generated content is still review_required until claim-level
+    # grounding validation is implemented.
     # ------------------------------------------------------------------
 
     grounding_started_at = perf_counter()
+
+    grounding_score = None
 
     if trace is not None:
         trace.record(
@@ -325,7 +368,10 @@ async def build_training_explanation(
                 "has not yet been applied."
             ),
             details={
-                "grounding_score": None,
+                "grounding_score": grounding_score,
+                "generated_content_present": (
+                    generated_content is not None
+                ),
             },
         )
 
@@ -348,26 +394,41 @@ async def build_training_explanation(
             "insufficient_evidence"
         )
 
-        summary = (
+        response_summary = (
             "The system could not retrieve sufficient regulatory "
             "evidence for every answer option. "
             "Manual review is required."
         )
+
+    elif generated_content is not None:
+        # Generation succeeded, but grounding has not yet been evaluated.
+        response_status = "review_required"
+        response_summary = (
+            generated_content.summary
+        )
+
     else:
         response_status = "review_required"
 
-        summary = (
+        response_summary = (
             "Relevant regulatory evidence was retrieved for each option. "
-            "Automated explanation generation is not yet enabled, so the "
-            "evidence must be reviewed before publication."
+            "Automated explanation generation was unavailable or rejected, "
+            "so the deterministic fallback requires review."
         )
+
+    response_generator_model = (
+        generation_attempt.model
+        if generation_attempt.status
+        == "generated"
+        else None
+    )
 
     response = TrainingExplanationResponse(
         trace_id=str(uuid4()),
         question_id=request.question_id,
         status=response_status,
         learner_result=learner_result,
-        summary=summary,
+        summary=response_summary,
         option_explanations=(
             option_explanations
         ),
@@ -377,11 +438,13 @@ async def build_training_explanation(
                 materialized
             )
         ),
-        grounding_score=None,
+        grounding_score=grounding_score,
         corpus_version=(
             retrieval.eligible_corpus_version
         ),
-        generator_model=None,
+        generator_model=(
+            response_generator_model
+        ),
         generated_at=datetime.now(
             timezone.utc
         ),
@@ -416,6 +479,9 @@ async def build_training_explanation(
                 ),
                 "generator_model": (
                     response.generator_model
+                ),
+                "generation_status": (
+                    generation_attempt.status
                 ),
             },
         )
