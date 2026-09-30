@@ -11,9 +11,10 @@ from app.core.audit import AUDIT_FILE, FEEDBACK_FILE
 from app.core.config import (
     CACHE_DIR,
     CONTEXTUAL_CHUNKING,
-    DEEPSEEK_MODEL,
     EMBED_MODEL_NAME,
     ENABLE_GRAPH,
+    LLM_MODEL,
+    LLM_PROVIDER,
     RERANKER_MODEL,
 )
 
@@ -73,7 +74,8 @@ async def health():
         "embed_model":          EMBED_MODEL_NAME,
         "cross_encoder":        RERANKER_MODEL or "disabled (cosine fallback)",
         "llm_enabled":          state.llm_client is not None,
-        "llm_model":            DEEPSEEK_MODEL if state.llm_client else None,
+        "llm_provider":         LLM_PROVIDER,
+        "llm_model":            LLM_MODEL if state.llm_client else None,
         "contextual_chunking":  CONTEXTUAL_CHUNKING,
         "graph_enabled":        ENABLE_GRAPH,
         "graph_nodes":          len(state.KNOWLEDGE_GRAPH["nodes"]),

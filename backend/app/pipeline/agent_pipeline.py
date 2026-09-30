@@ -19,7 +19,7 @@ from fastapi import WebSocket
 
 from app.core import state
 from app.core.audit import AUDIT_FILE, _append_jsonl, _utc_now_iso, redact_text
-from app.core.config import DEEPSEEK_MODEL
+from app.core.config import LLM_MODEL
 from app.core.schemas import QueryRequest
 from app.llm.client import llm_call, llm_stream_answer
 from app.pipeline.rag_pipeline import query_rag, run_rag_pipeline
@@ -219,7 +219,7 @@ async def run_agentic_pipeline(ws: WebSocket, req: QueryRequest) -> None:
         if state.llm_client:
             try:
                 stream = await state.llm_client.chat.completions.create(
-                    model=DEEPSEEK_MODEL,
+                    model=LLM_MODEL,
                     messages=[
                         {"role": "system", "content": sys_prompt},
                         {"role": "user",   "content": f"工具结果：\n{tools_ctx}\n\n问题：{req.query}"},
@@ -296,7 +296,7 @@ async def run_agentic_pipeline(ws: WebSocket, req: QueryRequest) -> None:
         if state.llm_client:
             try:
                 stream = await state.llm_client.chat.completions.create(
-                    model=DEEPSEEK_MODEL,
+                    model=LLM_MODEL,
                     messages=[
                         {"role": "system", "content": sys_syn},
                         {"role": "user",   "content": f"原始问题：{req.query}\n\n子问题答案：\n{sub_ctx}"},

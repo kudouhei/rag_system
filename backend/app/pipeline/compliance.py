@@ -98,9 +98,18 @@ async def run_compliance_check(req: ComplianceCheckRequest) -> ComplianceCheckRe
         return ComplianceCheckResponse(
             scenario=req.scenario,
             overall_status="needs_review",
-            summary=("DEEPSEEK_API_KEY not configured — returning retrieved clauses without an automated "
-                      "compliance verdict. Review the citations manually." if lang == "en" else
-                      "未配置 DEEPSEEK_API_KEY — 仅返回检索到的相关条款，未生成自动合规判断，请人工复核。"),
+            summary=(
+                (
+                    "Automated generation is currently unavailable — "
+                    "returning retrieved clauses without an automated "
+                    "compliance verdict. Review the citations manually."
+                )
+                if lang == "en"
+                else (
+                    "自动生成功能当前不可用——仅返回检索到的相关条款，"
+                    "未生成自动合规判断，请人工复核。"
+                )
+            ),
             findings=findings,
             elapsed_seconds=round(time.time() - t0, 2),
         )

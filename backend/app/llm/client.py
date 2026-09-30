@@ -14,19 +14,55 @@ from typing import List
 from fastapi import WebSocket
 
 from app.core import state
-from app.core.config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
+from app.core.config import (
+    LLM_API_KEY,
+    LLM_BASE_URL,
+    LLM_MODEL,
+    LLM_PROVIDER,
+)
 from app.core.messages import _t
 
 logger = logging.getLogger(__name__)
 
 
+SUPPORTED_LLM_PROVIDERS = {
+    "deepseek",
+    "azure_openai",
+}
+
+
 def init_llm_client() -> None:
-    if not DEEPSEEK_API_KEY:
-        logger.warning("DEEPSEEK_API_KEY not set — LLM features disabled")
+    """Initialise the configured OpenAI-compatible LLM client."""
+
+    state.llm_client = None
+
+    if LLM_PROVIDER not in SUPPORTED_LLM_PROVIDERS:
+        logger.error(
+            "Unsupported LLM provider '%s' — LLM features disabled",
+            LLM_PROVIDER,
+        )
         return
+
+    if not LLM_API_KEY:
+        logger.warning(
+            "LLM_API_KEY not set for provider '%s' — "
+            "LLM features disabled",
+            LLM_PROVIDER,
+        )
+        return
+
     from openai import AsyncOpenAI
-    state.llm_client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
-    logger.info("LLM client ready (model=%s)", DEEPSEEK_MODEL)
+
+    state.llm_client = AsyncOpenAI(
+        api_key=LLM_API_KEY,
+        base_url=LLM_BASE_URL,
+    )
+
+    logger.info(
+        "LLM client ready (provider=%s, model=%s)",
+        LLM_PROVIDER,
+        LLM_MODEL,
+    )
 
 def get_active_llm_model() -> str | None:
     """Return the configured model when an LLM client is active."""
@@ -34,7 +70,7 @@ def get_active_llm_model() -> str | None:
     if state.llm_client is None:
         return None
 
-    return DEEPSEEK_MODEL
+    return LLM_MODEL
 
 
 async def llm_call(messages: list, max_tokens: int = 100, temperature: float = 0.3) -> str:
@@ -43,7 +79,7 @@ async def llm_call(messages: list, max_tokens: int = 100, temperature: float = 0
         return ""
     try:
         resp = await state.llm_client.chat.completions.create(
-            model=DEEPSEEK_MODEL,
+            model=LLM_MODEL,
             messages=messages,
             max_tokens=max_tokens,
             temperature=temperature,
@@ -108,7 +144,7 @@ async def llm_stream_answer(
     full_answer = ""
     try:
         stream = await state.llm_client.chat.completions.create(
-            model=DEEPSEEK_MODEL,
+            model=LLM_MODEL,
             messages=messages,
             stream=True,
             max_tokens=1500,

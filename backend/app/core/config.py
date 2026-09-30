@@ -15,6 +15,31 @@ RERANKER_MODEL       = os.getenv("RERANKER_MODEL", "")
 DEEPSEEK_API_KEY     = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_MODEL       = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 DEEPSEEK_BASE_URL    = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+
+# Generic LLM configuration.
+#
+# The legacy DEEPSEEK_* variables remain as fallbacks so existing local
+# environments continue working while the application moves toward a
+# provider-neutral interface.
+LLM_PROVIDER = os.getenv(
+    "LLM_PROVIDER",
+    "deepseek",
+).strip().lower()
+
+LLM_API_KEY = os.getenv(
+    "LLM_API_KEY",
+    DEEPSEEK_API_KEY,
+)
+
+LLM_MODEL = os.getenv(
+    "LLM_MODEL",
+    DEEPSEEK_MODEL,
+)
+
+LLM_BASE_URL = os.getenv(
+    "LLM_BASE_URL",
+    DEEPSEEK_BASE_URL,
+).rstrip("/")
 # Regulatory articles/clauses run longer than IT runbook paragraphs.
 MAX_CHUNK_CHARS      = int(os.getenv("MAX_CHUNK_CHARS", "900"))
 # ⑦ Contextual Chunking: prepend LLM-generated context to each chunk before embedding

@@ -86,14 +86,17 @@ _MSG: dict = {
         "zh": "原始查询：{original}\n失败原因：{reason}",
         "en": "Original query: {original}\nFailure reason: {reason}",
     },
-    # Fallback answer (no LLM key)
+    # Fallback answer when automated LLM generation is unavailable.
     "fallback_prefix": {
         "zh": "根据知识库文档「{title}」，针对问题「{query}」：\n\n",
         "en": "Based on the knowledge base document \"{title}\", regarding the question \"{query}\":\n\n",
     },
-    "fallback_suffix": {
-        "zh": "\n\n（提示：未配置 DEEPSEEK_API_KEY，以上为文档直接摘录。）",
-        "en": "\n\n(Note: DEEPSEEK_API_KEY not configured — the above is a direct document excerpt.)",
+   "fallback_suffix": {
+        "zh": "\n\n（提示：自动生成功能当前不可用，以上为文档直接摘录。）",
+        "en": (
+            "\n\n(Note: automated generation is currently unavailable; "
+            "the above is a direct document excerpt.)"
+        ),
     },
     # Cross-encoder label
     "ce_label": {
