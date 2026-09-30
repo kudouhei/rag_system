@@ -1,8 +1,8 @@
 """
-LLM Client — DeepSeek API (OpenAI-compatible)
-==============================================
-Owns the LLM client lifecycle and every LLM-backed capability used by the
-pipeline: plain completions, query rewriting, and streaming answer generation.
+Provider-neutral LLM client
+===========================
+Owns the LLM client lifecycle and the provider-specific API adaptation used by
+plain completions, query rewriting, and streaming answer generation.
 """
 from __future__ import annotations
 
@@ -73,22 +73,54 @@ def get_active_llm_model() -> str | None:
     return LLM_MODEL
 
 
-async def llm_call(messages: list, max_tokens: int = 100, temperature: float = 0.3) -> str:
-    """Non-streaming LLM helper with graceful fallback."""
+async def llm_call(
+    messages: list[dict[str, str]],
+    max_tokens: int = 100,
+    temperature: float = 0.3,
+) -> str:
+    """Run a non-streaming request through the configured provider."""
+
     if not state.llm_client:
         return ""
-    try:
-        resp = await state.llm_client.chat.completions.create(
-            model=LLM_MODEL,
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
-        return resp.choices[0].message.content.strip()
-    except Exception as e:
-        logger.error("LLM call failed: %s", e)
-        return ""
 
+    try:
+        if LLM_PROVIDER == "azure_openai":
+            response = await state.llm_client.responses.create(
+                model=LLM_MODEL,
+                input=messages,
+                max_output_tokens=max(
+                    max_tokens,
+                    128,
+                ),
+            )
+
+            return (
+                response.output_text or ""
+            ).strip()
+
+        response = await (
+            state.llm_client.chat.completions.create(
+                model=LLM_MODEL,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+        )
+
+        content = response.choices[0].message.content
+
+        return (
+            content or ""
+        ).strip()
+
+    except Exception:
+        logger.exception(
+            "LLM call failed "
+            "(provider=%s, model=%s)",
+            LLM_PROVIDER,
+            LLM_MODEL,
+        )
+        return ""
 
 async def llm_rewrite_query(original: str, failure_reason: str, lang: str = "en") -> str:
     result = await llm_call(
