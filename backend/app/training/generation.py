@@ -21,7 +21,7 @@ from typing import Literal
 
 from app.llm.client import (
     get_active_llm_model,
-    llm_call,
+    llm_structured_call,
 )
 
 class InvalidGeneratedTrainingContent(
@@ -253,8 +253,28 @@ def parse_generated_training_content(
             )
         )
     except ValidationError as error:
+        validation_details = "; ".join(
+            (
+                ".".join(
+                    str(part)
+                    for part in item["loc"]
+                )
+                + ": "
+                + item["type"]
+            )
+            for item in error.errors(
+                include_input=False,
+                include_url=False,
+            )[:8]
+        )
+
         raise InvalidGeneratedTrainingContent(
             "LLM response does not match the required JSON contract"
+            + (
+                f": {validation_details}"
+                if validation_details
+                else ""
+            )
         ) from error
 
     expected_option_ids = {
@@ -426,8 +446,9 @@ async def generate_training_content(
         learner_result=learner_result,
     )
 
-    raw_content = await llm_call(
+    raw_content = await llm_structured_call(
         messages=messages,
+        response_model=GeneratedTrainingContent,
         max_tokens=1800,
         temperature=0.1,
     )

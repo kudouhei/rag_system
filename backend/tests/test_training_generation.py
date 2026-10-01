@@ -13,6 +13,7 @@ from app.training.evidence import (
     MaterializedTrainingEvidence,
 )
 from app.training.generation import (
+    GeneratedTrainingContent,
     InvalidGeneratedTrainingContent,
     generate_training_content,
     parse_generated_training_content,
@@ -279,15 +280,15 @@ class TrainingGenerationContractTests(
         return_value="mock-training-model",
     )
     @patch(
-        "app.training.generation.llm_call",
+        "app.training.generation.llm_structured_call",
         new_callable=AsyncMock,
     )
     async def test_generates_when_llm_output_is_valid(
         self,
-        mock_llm_call,
+        mock_llm_structured_call,
         mock_get_active_llm_model,
     ) -> None:
-        mock_llm_call.return_value = json.dumps(
+        mock_llm_structured_call.return_value = json.dumps(
             {
                 "summary": (
                     "The learner selected an incorrect answer."
@@ -347,7 +348,16 @@ class TrainingGenerationContractTests(
 
         mock_get_active_llm_model.assert_called_once_with()
 
-        mock_llm_call.assert_awaited_once()
+        mock_llm_structured_call.assert_awaited_once()
+
+        structured_call_kwargs = (
+            mock_llm_structured_call.await_args.kwargs
+        )
+
+        self.assertIs(
+            structured_call_kwargs["response_model"],
+            GeneratedTrainingContent,
+        )
 
 if __name__ == "__main__":
     unittest.main()

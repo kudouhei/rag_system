@@ -12,6 +12,7 @@ import logging
 from typing import List
 
 from fastapi import WebSocket
+from pydantic import BaseModel
 
 from app.core import state
 from app.core.config import (
@@ -116,6 +117,58 @@ async def llm_call(
     except Exception:
         logger.exception(
             "LLM call failed "
+            "(provider=%s, model=%s)",
+            LLM_PROVIDER,
+            LLM_MODEL,
+        )
+        return ""
+
+async def llm_structured_call(
+    messages: list[dict[str, str]],
+    response_model: type[BaseModel],
+    max_tokens: int = 1000,
+    temperature: float = 0.1,
+) -> str:
+    """Generate JSON using provider-supported structured output."""
+
+    if not state.llm_client:
+        return ""
+
+    if LLM_PROVIDER != "azure_openai":
+        return await llm_call(
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+
+    try:
+        response = await state.llm_client.responses.parse(
+            model=LLM_MODEL,
+            input=messages,
+            text_format=response_model,
+            max_output_tokens=max(
+                max_tokens,
+                128,
+            ),
+        )
+
+        parsed = response.output_parsed
+
+        if parsed is None:
+            logger.warning(
+                "Structured LLM response had no parsed output "
+                "(provider=%s, model=%s, response_id=%s)",
+                LLM_PROVIDER,
+                LLM_MODEL,
+                getattr(response, "id", None),
+            )
+            return ""
+
+        return parsed.model_dump_json()
+
+    except Exception:
+        logger.exception(
+            "Structured LLM call failed "
             "(provider=%s, model=%s)",
             LLM_PROVIDER,
             LLM_MODEL,

@@ -12,7 +12,7 @@ rank-bm25>=0.2.2
 jieba>=0.42.1
 
 # LLM (DeepSeek uses OpenAI-compatible API)
-openai>=1.30.0
+openai==3.19.2
 
 # Config
 python-dotenv>=1.0.0
