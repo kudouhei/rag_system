@@ -114,6 +114,12 @@ class GeneratedTrainingContent(BaseModel):
         max_length=10,
     )
 
+def _normalize_quote_text(value: str) -> str:
+    """Normalize layout whitespace without changing source wording."""
+    return " ".join(
+        value.split()
+    )
+
 
 def build_generation_messages(
     request: TrainingExplanationRequest,
@@ -290,6 +296,11 @@ def parse_generated_training_content(
             f"unexpected={unexpected_ids}"
         )
 
+    evidence_by_id = {
+        evidence.evidence_id: evidence
+        for evidence in materialized.evidence
+    }
+
     for option in generated.option_explanations:
         evidence_ids = option.evidence_ids
 
@@ -326,6 +337,46 @@ def parse_generated_training_content(
                 "LLM response omitted evidence for option "
                 f"{option.option_id!r}"
             )
+        
+        claim_evidence_ids = { claim.evidence_id for claim in option.claims }
+        if claim_evidence_ids != set(evidence_ids):
+            raise InvalidGeneratedTrainingContent(
+                "LLM claim evidence IDs do not match "
+                f"the option evidence IDs for "
+                f"{option.option_id!r}"
+            )
+        
+        for claim in option.claims:
+            if claim.evidence_id not in allowed_ids:
+                raise InvalidGeneratedTrainingContent(
+                    "LLM claim references disallowed evidence "
+                    f"for option {option.option_id!r}: "
+                    f"{claim.evidence_id!r}"
+                )
+
+            evidence = evidence_by_id.get(claim.evidence_id)
+
+            if evidence is None:
+                raise InvalidGeneratedTrainingContent(
+                    "LLM claim references evidence that was "
+                    "not materialized: "
+                    f"{claim.evidence_id!r}"
+                )
+
+            normalized_quote = _normalize_quote_text(
+                claim.supporting_quote
+            )
+
+            normalized_excerpt = _normalize_quote_text(
+                evidence.excerpt
+            )
+
+            if normalized_quote not in normalized_excerpt:
+                raise InvalidGeneratedTrainingContent(
+                    "LLM supporting quote was not found in "
+                    f"evidence {claim.evidence_id!r} for "
+                    f"option {option.option_id!r}"
+                )
 
     return generated
 

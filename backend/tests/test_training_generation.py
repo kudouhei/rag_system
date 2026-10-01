@@ -28,6 +28,10 @@ class TrainingGenerationContractTests(
     unittest.IsolatedAsyncioTestCase
 ):
     def setUp(self) -> None:
+        self.supporting_quote = (
+            "Personal data shall be adequate, "
+            "relevant and limited to what is necessary."
+        )
         self.request = TrainingExplanationRequest(
             tenant_id="bank-a",
             course_id="gdpr-foundations",
@@ -74,11 +78,7 @@ class TrainingGenerationContractTests(
                         ),
                         title="GDPR Article 5",
                         section="Article 5",
-                        excerpt=(
-                            "Personal data shall be adequate, "
-                            "relevant and limited to what is "
-                            "necessary."
-                        ),
+                        excerpt=self.supporting_quote,
                         relevance_score=0.93,
                     )
                 ],
@@ -90,6 +90,29 @@ class TrainingGenerationContractTests(
             )
         )
 
+    def _generated_option(self, option_id: str, explanation: str, evidence_id: str = "E1", supporting_quote: str | None = None) -> dict:
+        """Build one model-output fixture using the current contract."""
+
+        return {
+            "option_id": option_id,
+            "explanation": explanation,
+            "evidence_ids": [evidence_id],
+            "claims": [
+                {
+                    "claim": (
+                        "Personal data must be limited "
+                        "to what is necessary."
+                    ),
+                    "evidence_id": evidence_id,
+                    "supporting_quote": (
+                        supporting_quote
+                        if supporting_quote is not None
+                        else self.supporting_quote
+                    ),
+                }
+            ],
+        }
+
     def test_accepts_valid_generated_content(
         self,
     ) -> None:
@@ -100,31 +123,28 @@ class TrainingGenerationContractTests(
                     "answer."
                 ),
                 "option_explanations": [
-                    {
-                        "option_id": "A",
-                        "explanation": (
+                    self._generated_option(
+                        "A",
+                        (
                             "This is the data minimisation "
                             "principle."
                         ),
-                        "evidence_ids": ["E1"],
-                    },
-                    {
-                        "option_id": "B",
-                        "explanation": (
+                    ),
+                    self._generated_option(
+                        "B",
+                        (
                             "Collecting data merely because "
                             "it may be useful is inconsistent "
                             "with data minimisation."
                         ),
-                        "evidence_ids": ["E1"],
-                    },
-                    {
-                        "option_id": "C",
-                        "explanation": (
+                    ),
+                    self._generated_option(
+                        "C",
+                        (
                             "Storage limitation concerns how "
                             "long personal data is retained."
                         ),
-                        "evidence_ids": ["E1"],
-                    },
+                    ),
                 ],
             }
         )
@@ -161,21 +181,19 @@ class TrainingGenerationContractTests(
             {
                 "summary": "Invalid evidence reference.",
                 "option_explanations": [
-                    {
-                        "option_id": "A",
-                        "explanation": "Explanation A.",
-                        "evidence_ids": ["E1"],
-                    },
-                    {
-                        "option_id": "B",
-                        "explanation": "Explanation B.",
-                        "evidence_ids": ["E99"],
-                    },
-                    {
-                        "option_id": "C",
-                        "explanation": "Explanation C.",
-                        "evidence_ids": ["E1"],
-                    },
+                    self._generated_option(
+                        "A",
+                        "Explanation A.",
+                    ),
+                    self._generated_option(
+                        "B",
+                        "Explanation B.",
+                        evidence_id="E99",
+                    ),
+                    self._generated_option(
+                        "C",
+                        "Explanation C.",
+                    ),
                 ],
             }
         )
@@ -197,16 +215,14 @@ class TrainingGenerationContractTests(
             {
                 "summary": "One option is missing.",
                 "option_explanations": [
-                    {
-                        "option_id": "A",
-                        "explanation": "Explanation A.",
-                        "evidence_ids": ["E1"],
-                    },
-                    {
-                        "option_id": "B",
-                        "explanation": "Explanation B.",
-                        "evidence_ids": ["E1"],
-                    },
+                    self._generated_option(
+                        "A",
+                        "Explanation A.",
+                    ),
+                    self._generated_option(
+                        "B",
+                        "Explanation B.",
+                    ),
                 ],
             }
         )
@@ -214,6 +230,43 @@ class TrainingGenerationContractTests(
         with self.assertRaisesRegex(
             InvalidGeneratedTrainingContent,
             "option IDs do not match",
+        ):
+            parse_generated_training_content(
+                raw_content,
+                self.request,
+                self.materialized,
+            )
+
+    def test_rejects_supporting_quote_not_in_evidence(
+        self,
+    ) -> None:
+        raw_content = json.dumps(
+            {
+                "summary": "Contains a fabricated quotation.",
+                "option_explanations": [
+                    self._generated_option(
+                        "A",
+                        "Explanation A.",
+                        supporting_quote=(
+                            "This quotation does not exist "
+                            "in the supplied evidence."
+                        ),
+                    ),
+                    self._generated_option(
+                        "B",
+                        "Explanation B.",
+                    ),
+                    self._generated_option(
+                        "C",
+                        "Explanation C.",
+                    ),
+                ],
+            }
+        )
+
+        with self.assertRaisesRegex(
+            InvalidGeneratedTrainingContent,
+            "supporting quote",
         ):
             parse_generated_training_content(
                 raw_content,
@@ -240,30 +293,27 @@ class TrainingGenerationContractTests(
                     "The learner selected an incorrect answer."
                 ),
                 "option_explanations": [
-                    {
-                        "option_id": "A",
-                        "explanation": (
+                    self._generated_option(
+                        "A",
+                        (
                             "Option A expresses the data "
                             "minimisation principle."
                         ),
-                        "evidence_ids": ["E1"],
-                    },
-                    {
-                        "option_id": "B",
-                        "explanation": (
+                    ),
+                    self._generated_option(
+                        "B",
+                        (
                             "Option B permits unnecessary "
                             "collection and is incorrect."
                         ),
-                        "evidence_ids": ["E1"],
-                    },
-                    {
-                        "option_id": "C",
-                        "explanation": (
+                    ),
+                    self._generated_option(
+                        "C",
+                        (
                             "Option C concerns retention time, "
                             "not collection necessity."
                         ),
-                        "evidence_ids": ["E1"],
-                    },
+                    ),
                 ],
             }
         )
