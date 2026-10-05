@@ -17,6 +17,9 @@ from app.training.evidence import (
 from app.training.generation import (
     generate_training_content,
 )
+from app.training.grounding import (
+    evaluate_training_grounding,
+)
 from app.training.retrieval import (
     retrieve_training_candidates,
 )
@@ -348,33 +351,103 @@ async def build_training_explanation(
         )
 
     # ------------------------------------------------------------------
-    # Stage 7: Grounding
+    # Stage 7: Claim-level Grounding
     #
-    # Generated content is still review_required until claim-level
-    # grounding validation is implemented.
+    # Grounding runs only when controlled generation produced validated
+    # claims. Fallback explanations do not require an LLM judge.
     # ------------------------------------------------------------------
 
     grounding_started_at = perf_counter()
 
     grounding_score = None
+    grounding_model = None
+    grounding_verdicts: list[dict] = []
+    supported_claim_count = 0
+
+    claim_count = sum(
+        len(option.claims)
+        for option in (
+            generated_content.option_explanations
+            if generated_content is not None
+            else []
+        )
+    )
+
+    if generated_content is None:
+        grounding_result_status = (
+            "skipped_no_generated_content"
+        )
+
+        grounding_trace_status = "skipped"
+
+        grounding_summary = (
+            "Grounding was skipped because controlled "
+            "generation did not produce validated claims."
+        )
+
+    else:
+        grounding_attempt = await evaluate_training_grounding(generated_content)
+
+        grounding_result_status = grounding_attempt.status
+        grounding_score = grounding_attempt.score
+        grounding_model = grounding_attempt.model
+        
+        if grounding_attempt.output is not None:
+            grounding_verdicts = [
+                verdict.model_dump()
+                for verdict
+                in grounding_attempt.output.verdicts
+            ]
+
+            supported_claim_count = sum(
+                verdict.supported
+                for verdict
+                in grounding_attempt.output.verdicts
+            )
+        
+        if grounding_attempt.status == "evaluated":
+            grounding_trace_status = (
+                "complete"
+                if grounding_score == 1.0
+                else "failed"
+            )
+
+        elif grounding_attempt.status == "disabled":
+            grounding_trace_status = "skipped"
+
+        else:
+            grounding_trace_status = "failed"
+
+        grounding_summary = (
+            grounding_attempt.reason
+        )
+
+    grounding_passed = (
+        None
+        if grounding_score is None
+        else grounding_score == 1.0
+    )
 
     if trace is not None:
         trace.record(
             stage="grounding",
-            status="not_evaluated",
+            status=grounding_trace_status,
             started_at=grounding_started_at,
-            summary=(
-                "Claim-level grounding validation "
-                "has not yet been applied."
-            ),
+            summary=grounding_summary,
             details={
-                "grounding_score": grounding_score,
-                "generated_content_present": (
-                    generated_content is not None
+                "grounding_status": (
+                    grounding_result_status
                 ),
+                "grounding_score": grounding_score,
+                "grounding_passed": grounding_passed,
+                "judge_model": grounding_model,
+                "claim_count": claim_count,
+                "supported_claim_count": (
+                    supported_claim_count
+                ),
+                "verdicts": grounding_verdicts,
             },
         )
-
     # ------------------------------------------------------------------
     # Stage 8: Final Response
     # ------------------------------------------------------------------
@@ -401,7 +474,7 @@ async def build_training_explanation(
         )
 
     elif generated_content is not None:
-        # Generation succeeded, but grounding has not yet been evaluated.
+         # Automated grounding does not replace human publication approval.
         response_status = "review_required"
         response_summary = (
             generated_content.summary
@@ -482,6 +555,9 @@ async def build_training_explanation(
                 ),
                 "generation_status": (
                     generation_attempt.status
+                ),
+                "grounding_status": (
+                    grounding_result_status
                 ),
             },
         )
