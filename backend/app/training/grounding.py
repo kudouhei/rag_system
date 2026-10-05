@@ -1,11 +1,18 @@
 """Claim-level grounding contracts and deterministic scoring."""
 from __future__ import annotations
 
+import json
+from dataclasses import dataclass
+from typing import Literal
+
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    ValidationError,
 )
+
+from app.llm.client import ( get_active_llm_model, llm_structured_call)
 
 from app.training.generation import (
     GeneratedTrainingContent,
@@ -56,6 +63,23 @@ class GroundingJudgeOutput(BaseModel):
         min_length=1,
         max_length=80,
     )
+
+GroundingEvaluationStatus = Literal[
+    "evaluated",
+    "disabled",
+    "empty_response",
+    "invalid_output",
+]
+
+@dataclass(frozen=True, slots=True)
+class GroundingEvaluationAttempt:
+    """Result of attempting claim-level grounding evaluation."""
+
+    status: GroundingEvaluationStatus
+    score: float | None
+    output: GroundingJudgeOutput | None
+    model: str | None
+    reason: str
 
 
 def expected_claim_keys(
@@ -136,3 +160,138 @@ def calculate_grounding_score(
         supported_count / len(judged.verdicts),
         4,
     )
+
+def build_grounding_messages(
+    generated: GeneratedTrainingContent,
+) -> list[dict[str, str]]:
+    """Build a strict claim-versus-quote evaluation request."""
+
+    claim_payload = [
+        {
+            "option_id": option.option_id,
+            "claim_index": claim_index,
+            "claim": claim.claim,
+            "evidence_id": claim.evidence_id,
+            "supporting_quote": claim.supporting_quote,
+        }
+        for option in generated.option_explanations
+        for claim_index, claim in enumerate(
+            option.claims
+        )
+    ]
+
+    system_prompt = (
+        "You are a strict claim-evidence evaluator for GDPR "
+        "training content. For each supplied item, decide whether "
+        "the supporting_quote alone directly supports the claim. "
+        "Mark supported=true only when the claim follows from the "
+        "quote without outside legal knowledge, hidden assumptions, "
+        "or additional evidence. Shared words are not sufficient. "
+        "Do not rewrite or correct claims. Return exactly one verdict "
+        "for every supplied option_id and claim_index. Keep each "
+        "reason concise and explain the support decision."
+    )
+
+    user_prompt = json.dumps(
+        {
+            "claims": claim_payload,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+    return [
+        {
+            "role": "system",
+            "content": system_prompt,
+        },
+        {
+            "role": "user",
+            "content": user_prompt,
+        },
+    ]
+
+async def evaluate_training_grounding(
+    generated: GeneratedTrainingContent,
+) -> GroundingEvaluationAttempt:
+    """Evaluate every generated claim against its quoted support."""
+
+    active_model = get_active_llm_model()
+
+    if active_model is None:
+        return GroundingEvaluationAttempt(
+            status="disabled",
+            score=None,
+            output=None,
+            model=None,
+            reason="No active model configured",
+        )
+
+    messages = build_grounding_messages(generated)
+
+    raw_content = await llm_structured_call(
+        messages = messages,
+        response_model = GroundingJudgeOutput,
+        max_tokens = 1600,
+        temperature = 0.0,
+    )
+
+    if not raw_content:
+        return GroundingEvaluationAttempt(
+            status="empty_response",
+            score=None,
+            output=None,
+            model=active_model,
+            reason=(
+                "The grounding judge returned "
+                "no usable content."
+            ),
+        )
+    
+    try: 
+        judged = (GroundingJudgeOutput.model_validate_json(raw_content))
+
+    except ValidationError as e:
+        return GroundingEvaluationAttempt(
+            status="invalid_output",
+            score=None,
+            output=None,
+            model=active_model,
+            reason=(
+                "The grounding judge response does not "
+                "match the required JSON contract."
+            ),
+        )
+
+    try:
+        score = calculate_grounding_score(
+            generated=generated,
+            judged=judged,
+        )
+    except InvalidGroundingOutput as error:
+        return GroundingEvaluationAttempt(
+            status="invalid_output",
+            score=None,
+            output=judged,
+            model=active_model,
+            reason=str(error),
+        )
+
+    supported_count = sum(
+        verdict.supported
+        for verdict in judged.verdicts
+    )
+
+    return GroundingEvaluationAttempt(
+        status="evaluated",
+        score=score,
+        output=judged,
+        model=active_model,
+        reason=(
+            f"{supported_count} of "
+            f"{len(judged.verdicts)} claims "
+            "were judged as supported."
+        ),
+    )
+        
+    
