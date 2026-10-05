@@ -244,6 +244,16 @@ class TrainingGroundingScoreTests(
             GroundingJudgeOutput,
         )
 
+        self.assertEqual(
+            call_kwargs["max_tokens"],
+            2500,
+        )
+
+        self.assertEqual(
+            call_kwargs["reasoning_effort"],
+            "low",
+        )
+
         user_payload = json.loads(
             call_kwargs["messages"][1]["content"]
         )

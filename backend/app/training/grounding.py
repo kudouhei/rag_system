@@ -230,10 +230,11 @@ async def evaluate_training_grounding(
     messages = build_grounding_messages(generated)
 
     raw_content = await llm_structured_call(
-        messages = messages,
-        response_model = GroundingJudgeOutput,
-        max_tokens = 1600,
-        temperature = 0.0,
+        messages=messages,
+        response_model=GroundingJudgeOutput,
+        max_tokens=2500,
+        temperature=0.0,
+        reasoning_effort="low",
     )
 
     if not raw_content:

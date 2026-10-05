@@ -449,8 +449,9 @@ async def generate_training_content(
     raw_content = await llm_structured_call(
         messages=messages,
         response_model=GeneratedTrainingContent,
-        max_tokens=1800,
+        max_tokens=4000,
         temperature=0.1,
+        reasoning_effort="minimal",
     )
 
     if not raw_content:

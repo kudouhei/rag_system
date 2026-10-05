@@ -128,6 +128,7 @@ async def llm_structured_call(
     response_model: type[BaseModel],
     max_tokens: int = 1000,
     temperature: float = 0.1,
+    reasoning_effort: str | None = None,
 ) -> str:
     """Generate JSON using provider-supported structured output."""
 
@@ -142,14 +143,25 @@ async def llm_structured_call(
         )
 
     try:
-        response = await state.llm_client.responses.parse(
-            model=LLM_MODEL,
-            input=messages,
-            text_format=response_model,
-            max_output_tokens=max(
+        request_options: dict[str, object] = {
+            "model": LLM_MODEL,
+            "input": messages,
+            "text_format": response_model,
+            "max_output_tokens": max(
                 max_tokens,
                 128,
             ),
+        }
+
+        if reasoning_effort is not None:
+            request_options["reasoning"] = {
+                "effort": reasoning_effort,
+            }
+
+        response = await (
+            state.llm_client.responses.parse(
+                **request_options
+            )
         )
 
         parsed = response.output_parsed

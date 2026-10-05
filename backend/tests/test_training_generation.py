@@ -358,6 +358,15 @@ class TrainingGenerationContractTests(
             structured_call_kwargs["response_model"],
             GeneratedTrainingContent,
         )
+        self.assertEqual(
+            structured_call_kwargs["max_tokens"],
+            4000,
+        )
+
+        self.assertEqual(
+            structured_call_kwargs["reasoning_effort"],
+            "minimal",
+        )
 
 if __name__ == "__main__":
     unittest.main()
