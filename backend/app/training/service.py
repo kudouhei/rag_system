@@ -340,6 +340,9 @@ async def build_training_explanation(
                 "generation_status": (
                     generation_attempt.status
                 ),
+                "generation_prompt_version": (
+                    generation_attempt.prompt_version
+                ),
                 "generator_model": (
                     generation_attempt.model
                 ),

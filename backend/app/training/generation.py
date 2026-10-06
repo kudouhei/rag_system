@@ -24,6 +24,10 @@ from app.llm.client import (
     llm_structured_call,
 )
 
+GENERATION_PROMPT_VERSION = (
+    "training-explanation-generation-v1"
+)
+
 class InvalidGeneratedTrainingContent(
     ValueError
 ):
@@ -44,6 +48,7 @@ class TrainingGenerationAttempt:
     content: GeneratedTrainingContent | None
     model: str | None
     reason: str
+    prompt_version: str = GENERATION_PROMPT_VERSION
 
 class GeneratedClaim(BaseModel):
     """One generated legal claim and its proposed source support."""
