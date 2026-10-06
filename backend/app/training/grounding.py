@@ -18,6 +18,9 @@ from app.training.generation import (
     GeneratedTrainingContent,
 )
 
+GROUNDING_PROMPT_VERSION = (
+    "grounding-entailment-v1"
+)
 
 class InvalidGroundingOutput(ValueError):
     """The grounding judge output violated its contract."""

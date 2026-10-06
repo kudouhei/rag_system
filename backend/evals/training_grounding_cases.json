@@ -1,0 +1,42 @@
+{
+    "schema_version": 1,
+    "description": "Human-labelled claim-evidence cases for GDPR training grounding evaluation.",
+    "cases": [
+      {
+        "case_id": "gdpr-art5-explicit-data-minimisation",
+        "category": "explicit_statement",
+        "jurisdiction": "EU",
+        "language": "en",
+        "source": "gdpr/eu-gdpr-article-05-en.md",
+        "section": "Article 5(c)",
+        "claim": "Article 5 identifies the requirement to limit personal data to what is necessary as data minimisation.",
+        "supporting_quote": "adequate, relevant and limited to what is necessary in relation to the purposes for which they are processed (‘data minimisation’)",
+        "expected_supported": true,
+        "label_reason": "The quote explicitly states both the necessity limitation and the name data minimisation."
+      },
+      {
+        "case_id": "gdpr-art5-logical-application-excess-collection",
+        "category": "logical_application",
+        "jurisdiction": "EU",
+        "language": "en",
+        "source": "gdpr/eu-gdpr-article-05-en.md",
+        "section": "Article 5(c)",
+        "claim": "Collecting as much personal data as might become useful later conflicts with data minimisation.",
+        "supporting_quote": "adequate, relevant and limited to what is necessary in relation to the purposes for which they are processed (‘data minimisation’)",
+        "expected_supported": true,
+        "label_reason": "Collecting data beyond what is necessary directly conflicts with the limitation stated in the quote."
+      },
+      {
+        "case_id": "gdpr-art5-unsupported-reporting-deadline",
+        "category": "unsupported_added_rule",
+        "jurisdiction": "EU",
+        "language": "en",
+        "source": "gdpr/eu-gdpr-article-05-en.md",
+        "section": "Article 5(c)",
+        "claim": "A controller must report every data minimisation violation to the authority within 24 hours.",
+        "supporting_quote": "adequate, relevant and limited to what is necessary in relation to the purposes for which they are processed (‘data minimisation’)",
+        "expected_supported": false,
+        "label_reason": "The quote contains no reporting obligation, authority notification requirement, or 24-hour deadline."
+      }
+    ]
+  }
