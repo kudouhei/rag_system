@@ -230,7 +230,6 @@ async def build_training_explanation(
         await generate_training_content(
             request=request,
             materialized=materialized,
-            learner_result=learner_result,
         )
     )
 

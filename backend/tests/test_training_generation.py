@@ -322,7 +322,6 @@ class TrainingGenerationContractTests(
         attempt = await generate_training_content(
             request=self.request,
             materialized=self.materialized,
-            learner_result="incorrect",
         )
 
         self.assertEqual(

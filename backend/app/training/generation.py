@@ -124,14 +124,9 @@ def _normalize_quote_text(value: str) -> str:
 def build_generation_messages(
     request: TrainingExplanationRequest,
     materialized: MaterializedTrainingEvidence,
-    learner_result: str,
 ) -> list[dict[str, str]]:
     correct_ids = set(
         request.correct_option_ids
-    )
-
-    selected_ids = set(
-        request.selected_option_ids
     )
 
     allowed_evidence_ids = {
@@ -161,10 +156,6 @@ def build_generation_messages(
                 option.option_id
                 in correct_ids
             ),
-            "selected_by_learner": (
-                option.option_id
-                in selected_ids
-            ),
             "allowed_evidence_ids": (
                 materialized.evidence_ids_by_option.get(
                     option.option_id,
@@ -178,7 +169,6 @@ def build_generation_messages(
     task_payload = {
         "language": request.language,
         "question": request.question,
-        "learner_result": learner_result,
         "options": option_payload,
         "evidence": evidence_payload,
     }
@@ -403,7 +393,6 @@ def parse_generated_training_content(
 async def generate_training_content(
     request: TrainingExplanationRequest,
     materialized: MaterializedTrainingEvidence,
-    learner_result: str,
 ) -> TrainingGenerationAttempt:
     """Generate and validate training narratives with safe fallback."""
 
@@ -443,7 +432,6 @@ async def generate_training_content(
     messages = build_generation_messages(
         request=request,
         materialized=materialized,
-        learner_result=learner_result,
     )
 
     raw_content = await llm_structured_call(
