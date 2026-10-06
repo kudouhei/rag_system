@@ -28,7 +28,9 @@ from app.training.schemas import (
     TrainingExplanationResponse,
     TrainingOptionExplanation,
 )
-
+from app.training.versioning import (
+    compute_question_fingerprint,
+)
 
 if TYPE_CHECKING:
     from app.training.trace import (
@@ -114,6 +116,10 @@ async def build_training_explanation(
 
     request_started_at = perf_counter()
 
+    question_fingerprint = compute_question_fingerprint(
+        request.question
+    )
+
     if trace is not None:
         trace.record(
             stage="request",
@@ -127,6 +133,7 @@ async def build_training_explanation(
                 "tenant_id": request.tenant_id,
                 "course_id": request.course_id,
                 "question_id": request.question_id,
+                "question_fingerprint": question_fingerprint,
                 "option_count": len(
                     request.options
                 ),
@@ -499,6 +506,9 @@ async def build_training_explanation(
     response = TrainingExplanationResponse(
         trace_id=str(uuid4()),
         question_id=request.question_id,
+        question_fingerprint=(
+            question_fingerprint
+        ),
         status=response_status,
         learner_result=learner_result,
         summary=response_summary,
@@ -535,6 +545,9 @@ async def build_training_explanation(
             details={
                 "trace_id": response.trace_id,
                 "status": response.status,
+                "question_fingerprint": (
+                    response.question_fingerprint
+                ),
                 "learner_result": (
                     response.learner_result
                 ),

@@ -89,6 +89,7 @@ class TrainingOptionExplanation(BaseModel):
 class TrainingExplanationResponse(BaseModel):
     trace_id: str = Field(min_length=1, max_length=100)
     question_id: str = Field(min_length=1, max_length=100)
+    question_fingerprint: str = Field(min_length=1, max_length=100)
 
     status: Literal[
         "grounded",

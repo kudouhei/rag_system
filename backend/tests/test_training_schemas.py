@@ -34,6 +34,7 @@ class TrainingSchemaTests(unittest.TestCase):
         return {
             "trace_id": "trace-001",
             "question_id": "q-001",
+            "question_fingerprint": "q-001-fingerprint",
             "status": "grounded",
             "learner_result": "incorrect",
             "summary": "Data minimisation is the correct principle.",
