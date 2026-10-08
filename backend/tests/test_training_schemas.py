@@ -35,6 +35,7 @@ class TrainingSchemaTests(unittest.TestCase):
             "trace_id": "trace-001",
             "question_id": "q-001",
             "question_fingerprint": "q-001-fingerprint",
+            "explanation_version": "sha256:explanation-v1",
             "status": "grounded",
             "learner_result": "incorrect",
             "summary": "Data minimisation is the correct principle.",

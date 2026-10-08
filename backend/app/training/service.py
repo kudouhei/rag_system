@@ -29,6 +29,7 @@ from app.training.schemas import (
     TrainingOptionExplanation,
 )
 from app.training.versioning import (
+    compute_explanation_version,
     compute_question_fingerprint,
 )
 
@@ -504,6 +505,12 @@ async def build_training_explanation(
         == "generated"
         else None
     )
+    explanation_version = compute_explanation_version(
+        question_fingerprint=question_fingerprint,
+        summary=response_summary,
+        option_explanations=(option_explanations),
+        evidence=response_evidence,
+    )
 
     response = TrainingExplanationResponse(
         trace_id=str(uuid4()),
@@ -511,6 +518,7 @@ async def build_training_explanation(
         question_fingerprint=(
             question_fingerprint
         ),
+        explanation_version=explanation_version,
         status=response_status,
         learner_result=learner_result,
         summary=response_summary,
@@ -549,6 +557,9 @@ async def build_training_explanation(
                 "status": response.status,
                 "question_fingerprint": (
                     response.question_fingerprint
+                ),
+                "explanation_version": (
+                    response.explanation_version
                 ),
                 "learner_result": (
                     response.learner_result
