@@ -165,6 +165,11 @@ class TrainingExplanationArtifact(BaseModel):
         ExplanationStatus.REVIEW_REQUIRED
     )
 
+    revision: int = Field(
+        default=0,
+        ge=0,
+    )
+
     jurisdiction: str = Field(
         min_length=2,
         max_length=20,

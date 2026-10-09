@@ -10,6 +10,9 @@ from app.training.artifacts import (
 from app.training.lifecycle import (
     ExplanationStatus,
 )
+from app.training.review_events import (
+    ExplanationReviewEvent,
+)
 
 
 class ExplanationArtifactAlreadyExists(
@@ -27,8 +30,13 @@ class ExplanationArtifactNotFound(
 class ExplanationArtifactStatusConflict(
     RuntimeError
 ):
-    """The persisted status changed before an update completed."""
+    """The persisted status or revision differs from expectation."""
 
+
+class ExplanationReviewEventAlreadyExists(
+    ValueError
+):
+    """A review event with this event_id has already been stored."""   
 
 class ExplanationArtifactRepository(Protocol):
     """Storage operations required by the training domain."""
@@ -80,4 +88,35 @@ class ExplanationArtifactRepository(Protocol):
         question_fingerprint: str,
     ) -> TrainingExplanationArtifact | None:
         """Return the published version for the exact question."""
+        ...
+
+    async def apply_review_event(
+        self,
+        *,
+        tenant_id: str,
+        expected_revision: int,
+        event: ExplanationReviewEvent,
+    ) -> TrainingExplanationArtifact:
+        """Atomically update lifecycle state and append an event.
+
+        Require event.tenant_id to match tenant_id.
+        Find the artifact within that tenant.
+        Match its status against event.from_status and its
+        revision against expected_revision.
+        Apply event.to_status, increment revision, and append
+        the event in one atomic operation.
+
+        Leave both artifact and event history unchanged if
+        any check or write fails.
+        """
+        ...
+
+    async def list_review_events(
+        self,
+        *,
+        tenant_id: str,
+        artifact_id: UUID,
+        limit: int = 100,
+    ) -> list[ExplanationReviewEvent]:
+        """Return tenant-scoped audit events, newest first."""
         ...
