@@ -38,6 +38,11 @@ class ExplanationReviewEventAlreadyExists(
 ):
     """A review event with this event_id has already been stored."""   
 
+class ExplanationPublicationConflict(
+    RuntimeError
+):
+    """Another explanation is published for this question version."""
+    
 class ExplanationArtifactRepository(Protocol):
     """Storage operations required by the training domain."""
 
