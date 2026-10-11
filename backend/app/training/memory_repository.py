@@ -34,7 +34,7 @@ class InMemoryExplanationArtifactRepository:
             tuple[str, str, str, str],
             UUID,
         ] = {}
-        self._review_events: dict[UUID, list[ExplanationReviewEvent]] = {}
+        self._review_events: dict[UUID, ExplanationReviewEvent] = {}
 
         self._lock = Lock()
 
