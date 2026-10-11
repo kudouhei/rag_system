@@ -58,6 +58,12 @@ _ACTION_TRANSITIONS: dict[
     ),
 }
 
+def target_status_for_action(
+    action: ReviewAction,
+) -> ExplanationStatus:
+    """Return the lifecycle target of a governance action."""
+    return _ACTION_TRANSITIONS[action][1]
+
 
 class ExplanationReviewEvent(BaseModel):
     """One immutable human governance decision."""
