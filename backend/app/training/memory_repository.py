@@ -284,3 +284,70 @@ class InMemoryExplanationArtifactRepository:
                 event.model_copy(deep=True)
                 for event in events[:limit]
             ]
+
+    async def list_by_status(
+        self,
+        *,
+        tenant_id: str,
+        status: ExplanationStatus,
+        course_id: str | None = None,
+        limit: int = 100,
+    ) -> list[TrainingExplanationArtifact]:
+        if not 1 <= limit <= 100:
+            raise ValueError(
+                "limit must be between 1 and 100."
+            )
+
+        async with self._lock:
+            artifacts = [
+                artifact
+                for artifact in self._artifacts.values()
+                if artifact.tenant_id == tenant_id
+                and artifact.status == status
+                and (course_id is None or artifact.course_id == course_id)
+            ]
+
+            artifacts.sort(
+                key=lambda artifact: (
+                    artifact.created_at,
+                    str(artifact.artifact_id),
+                ),
+                reverse=True,
+            )
+
+            return [
+                artifact.model_copy(deep=True)
+                for artifact in artifacts[:limit]
+            ]
+
+    async def get_published(
+        self,
+        *,
+        tenant_id: str,
+        course_id: str,
+        question_id: str,
+        question_fingerprint: str,
+    ) -> TrainingExplanationArtifact | None:
+        async with self._lock:
+            matches = [
+                artifact
+                for artifact in self._artifacts.values()
+                if artifact.tenant_id == tenant_id
+                and artifact.course_id == course_id
+                and artifact.question_id == question_id
+                and artifact.question_fingerprint
+                == question_fingerprint
+                and artifact.status
+                == ExplanationStatus.PUBLISHED
+            ]
+
+            if not matches:
+                return None
+
+            if len(matches) > 1:
+                raise ExplanationPublicationConflict(
+                    "Multiple published explanations exist "
+                    "for this question version."
+                )
+
+            return matches[0].model_copy(deep=True)

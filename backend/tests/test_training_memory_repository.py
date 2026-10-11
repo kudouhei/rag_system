@@ -391,6 +391,147 @@ class TrainingMemoryRepositoryTests(
         self.assertEqual(first_saved, published)
         self.assertEqual(history_after, history_before)
 
+    async def test_review_queue_filters_tenant_course_and_status(
+        self,
+    ) -> None:
+        await self.repository.add(self.artifact)
+
+        variants = {}
+
+        for name, changes in [
+            (
+                "other_tenant",
+                {"tenant_id": "bank-b"},
+            ),
+            (
+                "other_course",
+                {"course_id": "another-course"},
+            ),
+            (
+                "approved",
+                {
+                    "explanation_version": (
+                        "sha256:explanation-v2"
+                    ),
+                    "summary": "An alternative explanation.",
+                },
+            ),
+        ]:
+            payload = self.artifact.model_dump()
+            payload.update(changes)
+            payload["artifact_id"] = uuid4()
+
+            variant = (
+                TrainingExplanationArtifact.model_validate(
+                    payload
+                )
+            )
+            await self.repository.add(variant)
+            variants[name] = variant
+
+        await self.apply_action(
+            variants["approved"],
+            action=ReviewAction.APPROVE,
+            target=ExplanationStatus.APPROVED,
+        )
+
+        course_queue = await self.repository.list_by_status(
+            tenant_id=self.artifact.tenant_id,
+            course_id=self.artifact.course_id,
+            status=ExplanationStatus.REVIEW_REQUIRED,
+        )
+
+        self.assertEqual(
+            [item.artifact_id for item in course_queue],
+            [self.artifact.artifact_id],
+        )
+
+        tenant_queue = await self.repository.list_by_status(
+            tenant_id=self.artifact.tenant_id,
+            status=ExplanationStatus.REVIEW_REQUIRED,
+        )
+
+        self.assertEqual(
+            {item.artifact_id for item in tenant_queue},
+            {
+                self.artifact.artifact_id,
+                variants["other_course"].artifact_id,
+            },
+        )
+
+    async def test_runtime_reads_only_exact_published_question(
+        self,
+    ) -> None:
+        await self.repository.add(self.artifact)
+
+        lookup = {
+            "tenant_id": self.artifact.tenant_id,
+            "course_id": self.artifact.course_id,
+            "question_id": self.artifact.question_id,
+            "question_fingerprint": (
+                self.artifact.question_fingerprint
+            ),
+        }
+
+        # Pending content is not available to learners.
+        self.assertIsNone(
+            await self.repository.get_published(**lookup)
+        )
+
+        approved = await self.apply_action(
+            self.artifact,
+            action=ReviewAction.APPROVE,
+            target=ExplanationStatus.APPROVED,
+        )
+
+        # Approval alone does not make content available.
+        self.assertIsNone(
+            await self.repository.get_published(**lookup)
+        )
+
+        published = await self.apply_action(
+            approved,
+            action=ReviewAction.PUBLISH,
+            target=ExplanationStatus.PUBLISHED,
+        )
+
+        self.assertEqual(
+            await self.repository.get_published(**lookup),
+            published,
+        )
+
+        for field_name, wrong_value in [
+            ("tenant_id", "bank-b"),
+            ("course_id", "another-course"),
+            ("question_id", "another-question"),
+            (
+                "question_fingerprint",
+                "sha256:updated-question",
+            ),
+        ]:
+            with self.subTest(field_name=field_name):
+                mismatched_lookup = {
+                    **lookup,
+                    field_name: wrong_value,
+                }
+
+                self.assertIsNone(
+                    await self.repository.get_published(
+                        **mismatched_lookup
+                    )
+                )
+
+        await self.apply_action(
+            published,
+            action=ReviewAction.RETIRE,
+            target=ExplanationStatus.RETIRED,
+            comment="This explanation has been withdrawn.",
+        )
+
+        self.assertIsNone(
+            await self.repository.get_published(**lookup)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
