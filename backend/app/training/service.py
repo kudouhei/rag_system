@@ -118,7 +118,7 @@ async def build_training_explanation(
     request_started_at = perf_counter()
 
     question_fingerprint = compute_question_fingerprint(
-        request.question
+        request
     )
 
     if trace is not None:

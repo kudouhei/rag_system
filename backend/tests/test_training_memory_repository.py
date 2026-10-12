@@ -24,6 +24,9 @@ from app.training.review_events import (
     ExplanationReviewEvent,
     ReviewAction,
 )
+from app.training.candidate_service import (
+    ExplanationCandidateService,
+)
 class TrainingMemoryRepositoryTests(
     unittest.IsolatedAsyncioTestCase
 ):
@@ -530,6 +533,117 @@ class TrainingMemoryRepositoryTests(
 
         self.assertIsNone(
             await self.repository.get_published(**lookup)
+        )
+
+    async def test_resaving_content_preserves_approval_and_history(
+        self,
+    ) -> None:
+        service = ExplanationCandidateService(
+            self.repository
+        )
+
+        original = await service.save_candidate(
+            self.artifact
+        )
+        approved = await self.apply_action(
+            original,
+            action=ReviewAction.APPROVE,
+            target=ExplanationStatus.APPROVED,
+        )
+
+        history_before = (
+            await self.repository.list_review_events(
+                tenant_id=approved.tenant_id,
+                artifact_id=approved.artifact_id,
+            )
+        )
+
+        # Same content, but from another submission.
+        repeated_payload = self.artifact.model_dump()
+        repeated_payload["artifact_id"] = uuid4()
+        repeated_payload["provenance"][
+            "source_trace_id"
+        ] = "trace-repeat"
+
+        repeated = (
+            TrainingExplanationArtifact.model_validate(
+                repeated_payload
+            )
+        )
+
+        reused = await service.save_candidate(repeated)
+
+        history_after = (
+            await self.repository.list_review_events(
+                tenant_id=reused.tenant_id,
+                artifact_id=reused.artifact_id,
+            )
+        )
+
+        self.assertEqual(reused, approved)
+        self.assertNotEqual(
+            reused.artifact_id,
+            repeated.artifact_id,
+        )
+        self.assertEqual(
+            reused.provenance.source_trace_id,
+            original.provenance.source_trace_id,
+        )
+        self.assertEqual(history_after, history_before)
+
+        self.assertIsNone(
+            await self.repository.get_by_id(
+                tenant_id=repeated.tenant_id,
+                artifact_id=repeated.artifact_id,
+            )
+        )
+
+    async def test_id_collision_does_not_reuse_different_content(
+        self,
+    ) -> None:
+        service = ExplanationCandidateService(
+            self.repository
+        )
+
+        original = await service.save_candidate(
+            self.artifact
+        )
+
+        # Different content incorrectly uses the original ID.
+        collision_payload = self.artifact.model_dump()
+        collision_payload["explanation_version"] = (
+            "sha256:explanation-v2"
+        )
+        collision_payload["summary"] = (
+            "An alternative explanation."
+        )
+
+        collision = (
+            TrainingExplanationArtifact.model_validate(
+                collision_payload
+            )
+        )
+
+        with self.assertRaises(
+            ExplanationArtifactAlreadyExists
+        ):
+            await service.save_candidate(collision)
+
+        saved = await self.repository.get_by_id(
+            tenant_id=original.tenant_id,
+            artifact_id=original.artifact_id,
+        )
+        self.assertEqual(saved, original)
+
+        self.assertIsNone(
+            await self.repository.find_by_version(
+                tenant_id=collision.tenant_id,
+                course_id=collision.course_id,
+                question_id=collision.question_id,
+                explanation_version=(
+                    collision.explanation_version
+                ),
+            )
         )
 
 
