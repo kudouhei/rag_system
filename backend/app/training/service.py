@@ -1,6 +1,8 @@
 """Application service for GDPR training explanations."""
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from datetime import datetime, timezone
 from time import perf_counter
 from typing import TYPE_CHECKING
@@ -37,6 +39,13 @@ if TYPE_CHECKING:
     from app.training.trace import (
         TrainingTraceCollector,
     )
+
+@dataclass(frozen=True, slots=True)
+class TrainingExplanationBuildResult:
+    """Pipeline response and internal generation metadata."""
+
+    response: TrainingExplanationResponse
+    grounding_model: str | None
 
 
 def _compute_evidence_relevance_score(
@@ -107,10 +116,10 @@ def _build_fallback_explanation(
     )
 
 
-async def build_training_explanation(
+async def build_training_explanation_result(
     request: TrainingExplanationRequest,
     trace: TrainingTraceCollector | None = None,
-) -> TrainingExplanationResponse:
+) -> TrainingExplanationBuildResult:
     # ------------------------------------------------------------------
     # Stage 1: Request
     # ------------------------------------------------------------------
@@ -588,4 +597,20 @@ async def build_training_explanation(
             },
         )
 
-    return response
+    return TrainingExplanationBuildResult(
+        response=response,
+        grounding_model=grounding_model,
+    )
+
+async def build_training_explanation(
+    request: TrainingExplanationRequest,
+    trace: TrainingTraceCollector | None = None,
+) -> TrainingExplanationResponse:
+    """Return the existing public response contract."""
+
+    result = await build_training_explanation_result(
+        request,
+        trace=trace,
+    )
+
+    return result.response
