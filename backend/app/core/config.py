@@ -50,3 +50,37 @@ CACHE_DIR            = Path(os.getenv("CACHE_DIR", _BACKEND_DIR / "cache"))
 ENABLE_GRAPH         = os.getenv("ENABLE_GRAPH", "true").lower() == "true"
 
 TRAINING_DEBUG_ENABLED = os.getenv("TRAINING_DEBUG_ENABLED", "false").lower() == "true"
+
+# Local development authentication for training management.
+APP_ENV = os.getenv(
+    "APP_ENV",
+    "production",
+).strip().lower()
+
+TRAINING_DEV_AUTH_ENABLED = (
+    os.getenv(
+        "TRAINING_DEV_AUTH_ENABLED",
+        "false",
+    ).strip().lower()
+    == "true"
+)
+
+TRAINING_DEV_TENANT_ID = os.getenv(
+    "TRAINING_DEV_TENANT_ID",
+    "",
+).strip()
+
+TRAINING_DEV_REVIEWER_TOKEN = os.getenv(
+    "TRAINING_DEV_REVIEWER_TOKEN",
+    "",
+)
+
+TRAINING_DEV_PUBLISHER_TOKEN = os.getenv(
+    "TRAINING_DEV_PUBLISHER_TOKEN",
+    "",
+)
+
+TRAINING_DEV_ADMIN_TOKEN = os.getenv(
+    "TRAINING_DEV_ADMIN_TOKEN",
+    "",
+)
