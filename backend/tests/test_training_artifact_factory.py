@@ -5,6 +5,19 @@ from datetime import datetime, timezone
 import unittest
 from uuid import UUID
 
+from unittest.mock import AsyncMock, patch
+
+from app.training.authoring_service import (
+    ExplanationAuthoringService,
+    InsufficientExplanationEvidence,
+)
+from app.training.memory_repository import (
+    InMemoryExplanationArtifactRepository,
+)
+from app.training.service import (
+    TrainingExplanationBuildResult,
+)
+
 from app.training.artifact_factory import (
     build_review_artifact,
 )
@@ -23,7 +36,7 @@ from app.training.schemas import (
 )
 
 
-class TrainingArtifactFactoryTests(unittest.TestCase):
+class TrainingArtifactFactoryTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.request = TrainingExplanationRequest(
             tenant_id="bank-a",
@@ -189,6 +202,109 @@ class TrainingArtifactFactoryTests(unittest.TestCase):
             "trace-001",
         )
 
+    async def test_authoring_saves_candidate_to_review_queue(
+        self,
+    ) -> None:
+        repository = InMemoryExplanationArtifactRepository()
+        service = ExplanationAuthoringService(repository)
+
+        build_result = TrainingExplanationBuildResult(
+            response=self.response,
+            grounding_model="judge-test-deployment",
+        )
+
+        with patch(
+            "app.training.authoring_service."
+            "build_training_explanation_result",
+            new_callable=AsyncMock,
+            return_value=build_result,
+        ) as pipeline:
+            artifact = await service.create_candidate(
+                request=self.request,
+                created_by="author-001",
+            )
+
+        pipeline.assert_awaited_once()
+
+        submitted_request = pipeline.await_args.args[0]
+        self.assertEqual(
+            submitted_request.selected_option_ids,
+            [],
+        )
+        self.assertEqual(
+            self.request.selected_option_ids,
+            ["B"],
+        )
+
+        queue = await repository.list_by_status(
+            tenant_id=self.request.tenant_id,
+            course_id=self.request.course_id,
+            status=ExplanationStatus.REVIEW_REQUIRED,
+        )
+
+        self.assertEqual(queue, [artifact])
+        self.assertEqual(artifact.created_by, "author-001")
+        self.assertEqual(
+            artifact.provenance.grounding_model,
+            "judge-test-deployment",
+        )
+        self.assertEqual(
+            artifact.provenance.source_trace_id,
+            self.response.trace_id,
+        )
+        self.assertEqual(
+            artifact.option_explanations[0].evidence_chunk_ids,
+            ["chunk:article-5-stable"],
+        )
+
+    async def test_insufficient_evidence_is_not_saved(
+        self,
+    ) -> None:
+        repository = InMemoryExplanationArtifactRepository()
+        service = ExplanationAuthoringService(repository)
+
+        payload = self.response.model_dump()
+        payload["status"] = "insufficient_evidence"
+        payload["summary"] = "No sufficient evidence was found."
+        payload["evidence"] = []
+        payload["evidence_relevance_score"] = 0.0
+        payload["grounding_score"] = None
+        payload["generator_model"] = None
+
+        for option in payload["option_explanations"]:
+            option["evidence_ids"] = []
+
+        insufficient_response = (
+            TrainingExplanationResponse.model_validate(
+                payload
+            )
+        )
+
+        build_result = TrainingExplanationBuildResult(
+            response=insufficient_response,
+            grounding_model=None,
+        )
+
+        with patch(
+            "app.training.authoring_service."
+            "build_training_explanation_result",
+            new_callable=AsyncMock,
+            return_value=build_result,
+        ):
+            with self.assertRaises(
+                InsufficientExplanationEvidence
+            ):
+                await service.create_candidate(
+                    request=self.request,
+                    created_by="author-001",
+                )
+
+        queue = await repository.list_by_status(
+            tenant_id=self.request.tenant_id,
+            status=ExplanationStatus.REVIEW_REQUIRED,
+        )
+
+        self.assertEqual(queue, [])
 
 if __name__ == "__main__":
     unittest.main()
