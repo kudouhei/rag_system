@@ -55,6 +55,10 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.training.memory_repository import (
+    InMemoryExplanationArtifactRepository,
+)
+
 from app.pipeline.indexing import startup as _startup
 from app.routes import router as api_router
 
@@ -65,7 +69,15 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await _startup()
-    yield
+
+    app.state.training_repository = (
+        InMemoryExplanationArtifactRepository()
+    )
+
+    try:
+        yield
+    finally:
+        app.state.training_repository = None
 
 
 app = FastAPI(title="Adaptive RAG System", version="2.0.0", lifespan=lifespan)
