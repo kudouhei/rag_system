@@ -1,6 +1,7 @@
 """Application service for GDPR training explanations."""
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from datetime import datetime, timezone
@@ -40,6 +41,7 @@ if TYPE_CHECKING:
         TrainingTraceCollector,
     )
 
+logger = logging.getLogger(__name__)
 @dataclass(frozen=True, slots=True)
 class TrainingExplanationBuildResult:
     """Pipeline response and internal generation metadata."""
@@ -242,6 +244,18 @@ async def build_training_explanation_result(
             materialized=materialized,
         )
     )
+
+    if generation_attempt.status != "generated":
+        logger.warning(
+            "Training generation fallback: "
+            "tenant_id=%s question_id=%s "
+            "status=%s model=%s reason=%s",
+            request.tenant_id,
+            request.question_id,
+            generation_attempt.status,
+            generation_attempt.model,
+            generation_attempt.reason,
+        )
 
     generated_content = (
         generation_attempt.content
